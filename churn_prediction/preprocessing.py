@@ -9,6 +9,8 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from churn_prediction.feature_engineering import build_features
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,9 @@ def get_column_lists(
     Returns:
         Tuple of (numeric_cols, categorical_cols, cols_to_drop, target_col).
     """
+
+    logger.debug("Loading feature schema from %s", config_path)
+
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
@@ -31,6 +36,14 @@ def get_column_lists(
     categorical_cols = config["categorical"]
     cols_to_drop = config["drop"]
     target_col = config["target"]
+
+    logger.debug(
+        "Schema loaded: %d numeric, %d categorical, %d dropped, target=%s",
+        len(numeric_cols),
+        len(categorical_cols),
+        len(cols_to_drop),
+        target_col,
+    )
 
     return numeric_cols, categorical_cols, cols_to_drop, target_col
 
@@ -44,6 +57,7 @@ def build_preprocessor(config_path: str | Path) -> ColumnTransformer:
     Returns:
         An unfitted ColumnTransformer combining numeric and categorical pipelines.
     """
+
     numeric_cols, categorical_cols, _, _ = get_column_lists(config_path)
 
     numeric_pipeline = Pipeline(
@@ -68,6 +82,12 @@ def build_preprocessor(config_path: str | Path) -> ColumnTransformer:
         remainder="drop",
     )
 
+    logger.info(
+        "Built preprocessor with %d numeric and %d categorical columns",
+        len(numeric_cols),
+        len(categorical_cols),
+    )
+
     return preprocessor
 
 
@@ -76,7 +96,7 @@ def prepare_raw_xy(
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Split a raw DataFrame into features (X) and binary target (y).
 
-    Drops irrelevant columns, coerces TotalCharges to numeric, casts
+    Drops irrelevant columns, casts
     SeniorCitizen to string, and maps the target column to binary integers.
     Does not apply any fitted transformations, so it is safe to call on the
     full dataset before train/test split.
@@ -88,11 +108,12 @@ def prepare_raw_xy(
     Returns:
         Tuple of (X_df, y_series).
     """
-    X_df = df.copy()
-    _, _, cols_to_drop, target_col = get_column_lists(config_path)
 
-    if "TotalCharges" in X_df.columns:
-        X_df["TotalCharges"] = pd.to_numeric(X_df["TotalCharges"], errors="coerce")
+    logger.info("Preparing raw X/y from DataFrame with shape %s", df.shape)
+
+    X_df = df.copy()
+    X_df = build_features(X_df)
+    _, _, cols_to_drop, target_col = get_column_lists(config_path)
 
     X_df = X_df.drop(columns=cols_to_drop, errors="ignore")
     if target_col in X_df.columns:
@@ -100,6 +121,12 @@ def prepare_raw_xy(
     X_df["SeniorCitizen"] = X_df["SeniorCitizen"].astype(str)
 
     y_series = df[target_col].map({"Yes": 1, "No": 0})
+
+    logger.info(
+        "Prepared X shape=%s, y positive rate=%.3f",
+        X_df.shape,
+        y_series.mean(),
+    )
 
     return X_df, y_series
 
@@ -119,12 +146,17 @@ def preprocess_inference_data(
     Returns:
         Transformed feature matrix ready for prediction.
     """
+
+    logger.info("Preprocessing inference data with shape %s", data.shape)
+
     _, _, cols_to_drop, _ = get_column_lists(config_path)
 
     data = data.copy()
-    if "TotalCharges" in data.columns:
-        data["TotalCharges"] = pd.to_numeric(data["TotalCharges"], errors="coerce")
+    data = build_features(data)
     data = data.drop(columns=cols_to_drop, errors="ignore")
     data["SeniorCitizen"] = data["SeniorCitizen"].astype(str)
 
-    return preprocessor.transform(data)
+    transformed = preprocessor.transform(data)
+    logger.info("Inference data transformed to shape %s", transformed.shape)
+
+    return transformed

@@ -5,6 +5,7 @@ drop:
 numeric:
   - tenure
   - MonthlyCharges
+  - charges_per_tenure
 categorical:
   - gender
   - Partner
@@ -22,3 +23,5 @@ categorical:
   - PaperlessBilling
   - PaymentMethod
   - SeniorCitizen
+  - tenure_bucket
+  - contract_payment
