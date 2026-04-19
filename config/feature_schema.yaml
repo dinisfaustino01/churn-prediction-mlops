@@ -1,0 +1,24 @@
+target: Churn
+drop:
+  - customerID
+  - TotalCharges
+numeric:
+  - tenure
+  - MonthlyCharges
+categorical:
+  - gender
+  - Partner
+  - Dependents
+  - PhoneService
+  - MultipleLines
+  - InternetService
+  - OnlineSecurity
+  - OnlineBackup
+  - DeviceProtection
+  - TechSupport
+  - StreamingTV
+  - StreamingMovies
+  - Contract
+  - PaperlessBilling
+  - PaymentMethod
+  - SeniorCitizen
