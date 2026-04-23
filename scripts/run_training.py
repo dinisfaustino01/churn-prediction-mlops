@@ -11,11 +11,14 @@ from churn_prediction.feature_engineering import build_features
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
+import mlflow
+from dotenv import load_dotenv
 
 import hashlib
 import git
 
 
+load_dotenv()
 setup_logging()
 logger = logging.getLogger(__name__)
 
@@ -87,7 +90,52 @@ def main() -> None:
     logger.info("False Positives: %s", false_positives)
     logger.info("False Negatives: %s", false_negatives)
     logger.info("True Positives: %s", true_positives)
+    
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+    if not tracking_uri:
+        raise RuntimeError("MLFLOW_TRACKING_URI not set in .env")
+    
+    logger.info("Connecting to MLflow tracking server: %s", tracking_uri)
+    mlflow.set_tracking_uri(tracking_uri)
+    mlflow.set_experiment("churn-prediction-training")
 
+    git_sha = get_git_sha()
+    logger.info("Git SHA: %s", git_sha)
+
+    with mlflow.start_run(run_name=f"train-{git_sha}"):
+
+        mlflow.set_tag("git_commit_sha", git_sha)
+        mlflow.set_tag("dataset_hash", dataset_hash)
+
+        mlflow.log_params(params["xgb_params"])
+        mlflow.log_params(params["training"])
+
+        mlflow.log_metric("accuracy", accuracy)
+        mlflow.log_metric("precision", precision)
+        mlflow.log_metric("recall", recall)
+        mlflow.log_metric("f1_score", f1_score)
+        mlflow.log_metric("roc_auc_score", roc_auc_score)
+        mlflow.log_metric("brier_score", brier_score)
+        mlflow.log_metric("true_negatives", true_negatives)
+        mlflow.log_metric("false_positives", false_positives)
+        mlflow.log_metric("false_negatives", false_negatives)
+        mlflow.log_metric("true_positives", true_positives)
+
+        mlflow.xgboost.log_model(model, artifact_path="model")
+        mlflow.sklearn.log_model(preprocessor, artifact_path="preprocessor")
+
+        run_id = mlflow.active_run().info.run_id
+        model_uri = f"runs:/{run_id}/model"
+        preprocessor_uri = f"runs:/{run_id}/preprocessor"
+        registered_model = mlflow.register_model(model_uri, "churn-prediction-model")
+        registered_preprocessor = mlflow.register_model(preprocessor_uri, "churn-prediction-preprocessor")
+
+        client = mlflow.MlflowClient()
+        client.set_registered_model_alias(name="churn-prediction-model", alias="champion", version=registered_model.version)
+        client.set_registered_model_alias(name="churn-prediction-preprocessor", alias="champion", version=registered_preprocessor.version)
+
+        logger.info("Registered model v%s as champion", registered_model.version)
+        logger.info("Registered preprocessor v%s as champion", registered_preprocessor.version)
 
 if __name__ == "__main__":
     main()

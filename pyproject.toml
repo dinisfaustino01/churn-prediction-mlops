@@ -1,13 +1,33 @@
+[build-system]
+requires = ["setuptools>=68,<81",]
+build-backend = "setuptools.build_meta"
+
+
 [project]
-name = "project-0a-churn-prediction-batch-system-v2"
+name = "churn-prediction"
 version = "0.1.0"
-description = "Add your description here"
+description = "Production MLOps batch churn prediction system."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "gitpython>=3.1.43",
+    "mlflow>=2.10,<3",
+    "pandas>=2.0,<3",
+    "python-dotenv>=1.0",
     "python-json-logger>=4.1.0",
-    "pyyaml>=6.0.3",
+    "pyyaml>=6.0",
+    "scikit-learn>=1.3,<2",
+    "xgboost>=2.0,<4",
+    "sqlalchemy>=1.4,<2",
+    "psycopg2-binary>=2.9",
+    "prometheus-client>=0.20",
+    "evidently>=0.4.33,<0.5",
+    "setuptools>=68",
 ]
+
+
+[tool.setuptools.packages.find]
+include = ["churn_prediction*"]
 
 
 [tool.ruff]
@@ -91,13 +111,10 @@ docstring-code-format = false
 # enabled.
 docstring-code-line-length = "dynamic"
 
+
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.1",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
 ]
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["churn_prediction*"]
