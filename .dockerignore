@@ -1,0 +1,17 @@
+.venv/
+mlruns/
+mlartifacts/
+mlflow.db
+mlflow.db-journal
+data/raw/
+data/processed/
+data/incoming/
+data/drift_reports/
+logs/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.git/
+notebooks/
+test.ipynb

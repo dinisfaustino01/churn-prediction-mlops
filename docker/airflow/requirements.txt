@@ -1,0 +1,16 @@
+mlflow==2.10.0
+pandas
+scikit-learn
+xgboost
+evidently>=0.4.33,<0.5
+gitpython
+python-dotenv
+python-json-logger
+prometheus-client
+psycopg2-binary
+Flask==2.2.5
+Werkzeug==2.2.3
+flask-sqlalchemy==2.5.1
+flask-appbuilder==4.5.0
+flask-login==0.6.3
+SQLAlchemy==1.4.52

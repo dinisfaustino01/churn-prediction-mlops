@@ -1,4 +1,5 @@
 CREATE DATABASE mlflow_db;
+CREATE DATABASE airflow_db;
 
 CREATE TABLE IF NOT EXISTS predictions (
     id SERIAL PRIMARY KEY,
@@ -6,5 +7,6 @@ CREATE TABLE IF NOT EXISTS predictions (
     churn_probability FLOAT,
     predicted_label INTEGER,
     prediction_timestamp TIMESTAMP,
-    model_version VARCHAR(50)
+    model_version VARCHAR(50),
+    input_features_hash VARCHAR(50)
 );
