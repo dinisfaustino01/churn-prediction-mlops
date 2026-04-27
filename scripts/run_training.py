@@ -1,22 +1,21 @@
+import hashlib
 import logging
-from pathlib import Path
 import os
+import time
+from pathlib import Path
 
-from churn_prediction.logging_setup import setup_logging
+import git
+import mlflow
+import pandas as pd
+from dotenv import load_dotenv
+from sklearn.model_selection import train_test_split
+
 from churn_prediction.data_loader import load_raw_data
-from churn_prediction.preprocessing import prepare_raw_xy, build_preprocessor
-from churn_prediction.train import load_params, train_model
 from churn_prediction.evaluate import evaluate_model
 from churn_prediction.feature_engineering import build_features
-
-import pandas as pd
-from sklearn.model_selection import train_test_split
-import mlflow
-from dotenv import load_dotenv
-
-import hashlib
-import git
-
+from churn_prediction.logging_setup import setup_logging
+from churn_prediction.preprocessing import build_preprocessor, prepare_raw_xy
+from churn_prediction.train import load_params, train_model
 
 load_dotenv()
 setup_logging()
@@ -65,31 +64,16 @@ def main() -> None:
     X_test = preprocessor.transform(X_test_df)
 
     params = load_params(MODEL_PARAMS_PATH)
+
+    t0 = time.perf_counter()
     model = train_model(X_train, X_test, y_train, y_test, params)
+    duration = time.perf_counter() - t0
+    logger.info("Training Duration: %s", duration)
 
     evaluation = evaluate_model(model, X_test, y_test)
-    accuracy = evaluation["accuracy"]
-    precision = evaluation["precision"]
-    recall = evaluation["recall"]
-    f1_score = evaluation["f1_score"]
-    roc_auc_score = evaluation["roc_auc_score"]
-    brier_score = evaluation["brier_score"]
-    true_negatives = evaluation["true_negatives"]
-    false_positives = evaluation["false_positives"]
-    false_negatives = evaluation["false_negatives"]
-    true_positives = evaluation["true_positives"]
-    classification_report = evaluation["classification_report"]
-
-    logger.info("Accuracy: %s", accuracy)
-    logger.info("Precision: %s", precision)
-    logger.info("Recall: %s", recall)
-    logger.info("F1 Score: %s", f1_score)
-    logger.info("ROC AUC: %s", roc_auc_score)
-    logger.info("Brier Score: %s", brier_score)
-    logger.info("True Negatives: %s", true_negatives)
-    logger.info("False Positives: %s", false_positives)
-    logger.info("False Negatives: %s", false_negatives)
-    logger.info("True Positives: %s", true_positives)
+    
+    numeric_metrics = {k: v for k, v in evaluation.items() if isinstance(v, (int, float))}
+    logger.info("Evaluation: %s", numeric_metrics) 
     
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
     if not tracking_uri:
@@ -110,16 +94,9 @@ def main() -> None:
         mlflow.log_params(params["xgb_params"])
         mlflow.log_params(params["training"])
 
-        mlflow.log_metric("accuracy", accuracy)
-        mlflow.log_metric("precision", precision)
-        mlflow.log_metric("recall", recall)
-        mlflow.log_metric("f1_score", f1_score)
-        mlflow.log_metric("roc_auc_score", roc_auc_score)
-        mlflow.log_metric("brier_score", brier_score)
-        mlflow.log_metric("true_negatives", true_negatives)
-        mlflow.log_metric("false_positives", false_positives)
-        mlflow.log_metric("false_negatives", false_negatives)
-        mlflow.log_metric("true_positives", true_positives)
+        for name, value in numeric_metrics.items():
+            mlflow.log_metric(name, value)
+        mlflow.log_metric("training_duration_seconds", duration)
 
         mlflow.xgboost.log_model(model, artifact_path="model")
         mlflow.sklearn.log_model(preprocessor, artifact_path="preprocessor")

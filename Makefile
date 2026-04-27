@@ -1,3 +1,12 @@
+up:
+	docker compose up -d
+
+up-build:
+	docker compose up -d --build
+
+down:
+	docker compose down -v
+
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
@@ -11,3 +20,9 @@ test:
 
 install:
 	uv sync
+
+train:
+	uv run python scripts/run_training.py
+
+predict:
+	uv run python scripts/batch_predict.py

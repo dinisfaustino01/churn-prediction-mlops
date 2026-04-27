@@ -11,7 +11,6 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from churn_prediction.feature_engineering import build_features
 
-
 logger = logging.getLogger(__name__)
 
 
