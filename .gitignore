@@ -1,23 +1,53 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
 
 # Virtual environments
 .venv/
 
-
+# Secrets
 .env
-*.pyc
+
+# Caches
 .pytest_cache/
-mlruns/
-logs/*.log
 .ruff_cache/
 .ipynb_checkpoints/
-data/raw/*
-data/processed/*
 
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# MLflow local artifacts
+mlruns/
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# Runtime data (keep .gitkeep placeholders)
+data/drift_reports/*
+!data/drift_reports/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Scratch notebooks
 test.ipynb
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+
+
+# Temporary ignores
+docs/failure_modes.md
