@@ -1,3 +1,11 @@
+"""MLflow registry wrapper.
+
+    Loads the production model and preprocessor by the 'champion' alias.
+    Promoting a new version is done by reassigning the alias in the MLflow
+    UI or via the registry API. loaders never look up by version number,
+    so a rollback is one alias-pointer change.
+"""
+
 import logging
 import os
 

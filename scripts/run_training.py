@@ -1,3 +1,12 @@
+"""End-to-end training pipeline.
+
+    Loads the raw Telco dataset, splits train/test, fits the preprocessor
+    and XGBoost model, evaluates on the test set, logs everything to
+    MLflow, and registers both artifacts under the 'champion' alias.
+
+    Run via: `make train`
+"""
+
 import hashlib
 import logging
 import os

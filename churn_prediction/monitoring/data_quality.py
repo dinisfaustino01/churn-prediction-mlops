@@ -1,3 +1,13 @@
+"""Output-quality assertions for batch predictions.
+
+    Each helper returns a dict with at minimum 'status' (passed | failed |
+    warning) and 'severity' (hard | soft). Hard failures should halt the
+    pipeline. Soft warnings should only log. The orchestrator
+    run_all_checks() runs them all. aggregate_results() summarizes the
+    output and surfaces the list of hard failures driving the go/no-go
+    decision.
+"""
+
 import numpy as np
 import pandas as pd
 
@@ -136,6 +146,18 @@ def run_all_checks(predictions_df: pd.DataFrame, input_df: pd.DataFrame) -> dict
 
 
 def aggregate_results(check_results: dict) -> dict:
+    """Summarize per-check results into a single report-level dict.
+
+    Args:
+        check_results: Dict keyed by check name, with each value containing
+            'status' and 'severity' fields.
+
+    Returns:
+        Dict with 'total_checks', 'passed_checks', 'failed_checks',
+        'warnings', 'hard_failures', and 'all_passed' keys. 'all_passed'
+        is True when no hard check has failed; soft warnings do not
+        affect it.
+    """
 
     total = len(check_results)
     passed = sum(1 for r in check_results.values() if r["status"] == "passed")

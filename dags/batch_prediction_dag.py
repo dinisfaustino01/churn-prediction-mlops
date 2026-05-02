@@ -1,3 +1,16 @@
+"""Weekly batch churn-prediction DAG.
+
+    Task chain: validate → detect_drift → run_predictions →
+    check_data_quality → archive_processed_data.
+
+    Failure handling:
+    - All tasks retry once with a 30s delay.
+    - Hard data-quality failures stop the DAG before archive, so the
+    source file remains in incoming/ for re-processing after a fix.
+    - Soft data-quality warnings are logged but do not stop the pipeline.
+    - All persistence is idempotent on (batch_filename, model_version).
+"""
+
 import hashlib
 import logging
 import os
@@ -69,9 +82,22 @@ with DAG(
     catchup=False,
     tags=["ml", "batch", "predictions"],
 ) as dag:
-
+    
     @task
     def validate_incoming_data() -> str:
+        """
+        Validates the incoming batch file before processing.
+
+        Checks that exactly one CSV exists in incoming/, and that it contains
+        all expected feature columns defined in the feature schema.
+
+        Returns the absolute path to the batch file as a string.
+
+        Raises:
+            FileNotFoundError: If no CSV files are found in incoming/.
+            ValueError: If more than one file is found, or if expected columns are missing.
+        """
+
         files = list(Path(INCOMING_DIR).glob("*.csv"))
 
         if not files:
@@ -98,6 +124,25 @@ with DAG(
 
     @task
     def detect_drift(new_batch: str) -> dict:
+        """
+        Runs Evidently drift detection against the training reference snapshot.
+
+        Compares the incoming batch to the reference dataset across all numeric
+        and categorical features. Saves an HTML report to disk and persists a
+        summary row to the drift_reports table (idempotent on batch_filename).
+
+        Args:
+            new_batch: Absolute path to the incoming batch CSV.
+
+        Returns:
+            A dict with keys:
+                - "batch_path": the input path (passed through to the next task)
+                - "drift_result": the raw Evidently result dict
+
+        Raises:
+            FileNotFoundError: If the reference snapshot is missing.
+        """
+
         numeric_cols, categorical_cols, cols_to_drop, _ = get_column_lists(
             FEATURE_SCHEMA_PATH
         )
@@ -176,6 +221,21 @@ with DAG(
 
     @task
     def run_predictions(batch_and_drift: dict) -> str:
+        """
+        Loads the champion model and generates churn predictions for the batch.
+
+        Preprocesses the input data, runs inference with the current champion
+        XGBoost model, and persists results to the predictions table
+        (idempotent on batch_filename + model_version).
+
+        Args:
+            batch_and_drift: Dict with keys "batch_path" and "drift_result",
+                as returned by detect_drift.
+
+        Returns:
+            Absolute path to the batch CSV, passed through to the next task.
+        """
+
         new_batch = batch_and_drift["batch_path"]
 
         data = pd.read_csv(new_batch)
@@ -229,22 +289,44 @@ with DAG(
             )
             results.to_sql("predictions", con=conn, if_exists="append", index=False)
 
-        return new_batch
+        return {"batch_path": new_batch, "model_version": str(model_version)}
     
 
     @task
-    def check_data_quality(new_batch: str) -> str:
+    def check_data_quality(predictions_input: dict) -> str:
+        """
+        Runs data quality checks on the predictions written in the previous task.
+
+        Fetches the predictions for this batch from the database, runs all checks
+        via run_all_checks(), aggregates the results, and persists a report row
+        to data_quality_reports (idempotent on batch_filename + model_version).
+
+        Hard failures raise an exception, stopping the DAG and leaving the source
+        file in incoming/ for re-processing. Soft warnings are logged but do not
+        halt the pipeline.
+
+        Args:
+            new_batch: Absolute path to the incoming batch CSV.
+
+        Returns:
+            The same path, passed through to archive_processed_data.
+
+        Raises:
+            ValueError: If any hard data quality checks fail.
+        """
+
+        new_batch = predictions_input["batch_path"]
+        model_version = predictions_input["model_version"]
         
         data = pd.read_csv(new_batch)
 
         engine = get_db_engine()
         predictions = pd.read_sql(
-            text("SELECT * FROM predictions WHERE batch_filename = :b"),
+            text("SELECT * FROM predictions "
+                "WHERE batch_filename = :b AND model_version = :v"),
             con=engine,
-            params={"b": Path(new_batch).name},
+            params={"b": Path(new_batch).name, "v": model_version},
         )
-
-        model_version = predictions["model_version"].iloc[0]
 
         check_results = run_all_checks(predictions, data)
 
@@ -290,6 +372,17 @@ with DAG(
 
     @task
     def archive_processed_data(new_batch: str) -> None:
+        """
+        Moves the batch file from incoming/ to processed/ after successful completion.
+
+        This is the final step and only runs if all upstream tasks passed, including
+        data quality checks. Leaving the file in incoming/ on failure
+        is intentional, so the batch can be re-processed after a fix.
+
+        Args:
+            new_batch: Absolute path to the batch CSV to archive.
+        """
+
         Path(PROCESSED_DIR).mkdir(parents=True, exist_ok=True)
         dest = f"{PROCESSED_DIR}/{Path(new_batch).name}"
         shutil.move(new_batch, dest)
