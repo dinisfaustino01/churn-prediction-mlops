@@ -1,8 +1,9 @@
 import logging
 import logging.config
-from pathlib import Path
 
 import yaml
+
+from churn_prediction import PROJECT_ROOT
 
 
 def setup_logging() -> None:
@@ -13,7 +14,7 @@ def setup_logging() -> None:
         logger = logging.getLogger(__name__)
     """
 
-    config_path = Path(__file__).parent.parent / "config" / "logging.yaml"
+    config_path = PROJECT_ROOT / "config" / "logging.yaml"
     with open(config_path) as f:
         config = yaml.safe_load(f)
     logging.config.dictConfig(config)

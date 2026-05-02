@@ -2,7 +2,6 @@ import hashlib
 import logging
 import os
 import time
-from pathlib import Path
 
 import git
 import mlflow
@@ -10,19 +9,19 @@ import pandas as pd
 from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
 
-from churn_prediction.data_loader import load_raw_data
-from churn_prediction.evaluate import evaluate_model
-from churn_prediction.feature_engineering import build_features
-from churn_prediction.logging_setup import setup_logging
-from churn_prediction.preprocessing import build_preprocessor, prepare_raw_xy
-from churn_prediction.train import load_params, train_model
+from churn_prediction import PROJECT_ROOT
+from churn_prediction.data.loader import load_raw_data
+from churn_prediction.features.engineering import build_features
+from churn_prediction.features.preprocessor import build_preprocessor, prepare_raw_xy
+from churn_prediction.models.evaluate import evaluate_model
+from churn_prediction.models.train import load_params, train_model
+from churn_prediction.utils.logging_setup import setup_logging
 
 load_dotenv()
 setup_logging()
 logger = logging.getLogger(__name__)
 
 
-PROJECT_ROOT = Path(__file__).parent.parent
 DATA_PATH = PROJECT_ROOT / "data" / "training" / "train_data.csv"
 FEATURE_SCHEMA_PATH = PROJECT_ROOT / "config" / "feature_schema.yaml"
 MODEL_PARAMS_PATH = PROJECT_ROOT / "config" / "model_params.yaml"

@@ -47,6 +47,8 @@ desktop.ini
 .vscode/
 .idea/
 
+# Claude folder
+.claude/
 
 
 # Temporary ignores

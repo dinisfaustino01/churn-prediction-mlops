@@ -1,9 +1,10 @@
-import logging
 import hashlib
+import logging
 import os
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
+import json
 
 import mlflow
 import pandas as pd
@@ -16,14 +17,21 @@ from evidently.report import Report
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
-from churn_prediction.preprocessing import get_column_lists, preprocess_inference_data
+from churn_prediction import PROJECT_ROOT
+from churn_prediction.data.schema import get_column_lists
+from churn_prediction.features.preprocessor import preprocess_inference_data
+from churn_prediction.registry.mlflow_client import (
+    load_champion_model,
+    load_champion_preprocessor,
+)
+from churn_prediction.monitoring.data_quality import run_all_checks, aggregate_results
 
 
-FEATURE_SCHEMA_PATH = "/opt/airflow/config/feature_schema.yaml"
-INCOMING_DIR = "/opt/airflow/data/incoming"
-REFERENCE_PATH = "/opt/airflow/data/reference/training_snapshot.csv"
-DRIFT_REPORTS_DIR = "/opt/airflow/data/drift_reports"
-PROCESSED_DIR = "/opt/airflow/data/processed"
+FEATURE_SCHEMA_PATH = PROJECT_ROOT / "config" / "feature_schema.yaml"
+INCOMING_DIR = PROJECT_ROOT / "data" / "incoming"
+REFERENCE_PATH = PROJECT_ROOT / "data" / "reference" / "training_snapshot.csv"
+DRIFT_REPORTS_DIR = PROJECT_ROOT / "data" / "drift_reports"
+PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 
 
 logger = logging.getLogger(__name__)
@@ -176,10 +184,8 @@ with DAG(
             pd.util.hash_pandas_object(data, index=True).values
         ).hexdigest()[:16]
 
-        model = mlflow.xgboost.load_model("models:/churn-prediction-model@champion")
-        preprocessor = mlflow.sklearn.load_model(
-            "models:/churn-prediction-preprocessor@champion"
-        )
+        model = load_champion_model()
+        preprocessor = load_champion_preprocessor()
 
         data_transformed = preprocess_inference_data(
             data, FEATURE_SCHEMA_PATH, preprocessor
@@ -224,6 +230,63 @@ with DAG(
             results.to_sql("predictions", con=conn, if_exists="append", index=False)
 
         return new_batch
+    
+
+    @task
+    def check_data_quality(new_batch: str) -> str:
+        
+        data = pd.read_csv(new_batch)
+
+        engine = get_db_engine()
+        predictions = pd.read_sql(
+            text("SELECT * FROM predictions WHERE batch_filename = :b"),
+            con=engine,
+            params={"b": Path(new_batch).name},
+        )
+
+        model_version = predictions["model_version"].iloc[0]
+
+        check_results = run_all_checks(predictions, data)
+
+        logger.info("Quality check results: %s", check_results)
+
+        aggregated_results = aggregate_results(check_results)
+        
+        report_row = pd.DataFrame([{
+            "batch_filename": Path(new_batch).name,
+            "model_version": str(model_version),
+            "check_timestamp": datetime.now(),
+            "all_passed": aggregated_results["all_passed"],
+            "total_checks": aggregated_results["total_checks"],
+            "passed_checks": aggregated_results["passed_checks"],
+            "failed_checks": aggregated_results["failed_checks"],
+            "warnings": aggregated_results["warnings"],
+            "check_details": json.dumps(check_results),
+        }])
+
+        with engine.begin() as conn:
+            conn.execute(
+                text("DELETE FROM data_quality_reports "
+                    "WHERE batch_filename = :b AND model_version = :v"),
+                {"b": Path(new_batch).name, "v": str(model_version)},
+            )
+            report_row.to_sql(
+                "data_quality_reports", con=conn,
+                if_exists="append", index=False
+            )
+
+        if not aggregated_results["all_passed"]:
+            logger.error("Data quality hard failures: %s", aggregated_results["hard_failures"])
+            raise ValueError(
+                f"Data quality checks failed for batch "
+                f"{Path(new_batch).name}: {aggregated_results['hard_failures']}"
+            )
+
+        if aggregated_results["warnings"] > 0:
+            logger.warning("Data quality warnings present: %d", aggregated_results["warnings"])
+
+        return new_batch
+
 
     @task
     def archive_processed_data(new_batch: str) -> None:
@@ -235,4 +298,5 @@ with DAG(
     new_batch = validate_incoming_data()
     checked_batch = detect_drift(new_batch)
     predicted_batch = run_predictions(checked_batch)
-    archive_processed_data(predicted_batch)
+    quality_checked_data = check_data_quality(predicted_batch)
+    archive_processed_data(quality_checked_data)
