@@ -1,0 +1,18 @@
+# requirements.in for Airflow
+mlflow==2.10.0
+pandas==2.1.4
+scikit-learn==1.8.0
+xgboost==3.2.0
+evidently==0.4.40
+Flask==2.2.5
+Werkzeug==2.2.3
+flask-sqlalchemy==2.5.1
+flask-appbuilder==4.5.0
+flask-login==0.6.3
+SQLAlchemy==1.4.52
+gitpython==3.1.47
+python-dotenv==1.0.1
+python-json-logger==4.1.0
+pyyaml==6.0.2
+psycopg2-binary==2.9.9
+prometheus-client==0.25.0
