@@ -38,6 +38,11 @@ from churn_prediction.registry.mlflow_client import (
     load_champion_preprocessor,
 )
 from churn_prediction.monitoring.data_quality import run_all_checks, aggregate_results
+from churn_prediction.monitoring.metrics import ( 
+    push_prediction_metrics, 
+    push_drift_metrics, 
+    push_task_metrics 
+    )
 
 
 FEATURE_SCHEMA_PATH = PROJECT_ROOT / "config" / "feature_schema.yaml"
@@ -50,6 +55,30 @@ PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 logger = logging.getLogger(__name__)
 
 
+def _on_success(context):
+
+    ti = context["task_instance"]
+
+    push_task_metrics(
+        dag_id=ti.dag_id,
+        task_id=ti.task_id,
+        duration_seconds=ti.duration or 0.0,
+        failed=False
+    )
+
+
+def _on_failure(context):
+
+    ti = context["task_instance"]
+
+    push_task_metrics(
+        dag_id=ti.dag_id,
+        task_id=ti.task_id,
+        duration_seconds=ti.duration or 0.0,
+        failed=True
+    )
+
+
 # IMPLEMENT EXPONENTIAL BACKOFF LATER!
 default_args = {
     "owner": "mlops",
@@ -58,6 +87,8 @@ default_args = {
     "retry_delay": timedelta(seconds=30),
     # "retry_exponential_backoff": True,
     # "max_retry_delay": timedelta(minutes=10),
+    "on_success_callback": _on_success,
+    "on_failure_callback": _on_failure,
 }
 
 
@@ -123,7 +154,7 @@ with DAG(
         return new_batch
 
     @task
-    def detect_drift(new_batch: str) -> dict:
+    def detect_drift(new_batch: str) -> str:
         """
         Runs Evidently drift detection against the training reference snapshot.
 
@@ -179,6 +210,7 @@ with DAG(
         report.save_html(html_path)
 
         result = report.as_dict()["metrics"][0]["result"]
+        drift_table = report.as_dict()["metrics"][1]["result"]
 
         dataset_drift = result["dataset_drift"]
         num_drifted = result["number_of_drifted_columns"]
@@ -217,10 +249,17 @@ with DAG(
             )
             drift_row.to_sql("drift_reports", con=conn, if_exists="append", index=False)
 
-        return {"batch_path": new_batch, "drift_result": result}
+        drift_per_feature = {
+            feature: column_result["drift_score"]
+            for feature, column_result in drift_table["drift_by_columns"].items()
+        }
+
+        push_drift_metrics(batch_filename=batch_filename, drift_per_feature=drift_per_feature)
+
+        return new_batch
 
     @task
-    def run_predictions(batch_and_drift: dict) -> str:
+    def run_predictions(new_batch: str) -> str:
         """
         Loads the champion model and generates churn predictions for the batch.
 
@@ -235,8 +274,6 @@ with DAG(
         Returns:
             Absolute path to the batch CSV, passed through to the next task.
         """
-
-        new_batch = batch_and_drift["batch_path"]
 
         data = pd.read_csv(new_batch)
 
@@ -264,6 +301,10 @@ with DAG(
         logger.info("Share predicted to churn: %.3f", y_pred.mean())
         logger.info("Model version: %s", model_version)
 
+        push_prediction_metrics(batch_filename=Path(new_batch).name, 
+                                model_version=str(model_version), 
+                                churn_probabilities=y_prob)
+
         results = pd.DataFrame(
             {
                 "customer_id": data["customerID"],
@@ -290,7 +331,6 @@ with DAG(
             results.to_sql("predictions", con=conn, if_exists="append", index=False)
 
         return {"batch_path": new_batch, "model_version": str(model_version)}
-    
 
     @task
     def check_data_quality(predictions_input: dict) -> str:
