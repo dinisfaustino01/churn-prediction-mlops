@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 
 import numpy as np
 from prometheus_client import (
@@ -9,7 +9,6 @@ from prometheus_client import (
     Histogram,
     pushadd_to_gateway,
 )
-
 
 PUSHGATEWAY_URL = os.getenv("PUSHGATEWAY_URL", "http://pushgateway:9091")
 JOB_NAME = "batch_prediction_dag"
@@ -38,21 +37,21 @@ def push_prediction_metrics(
         model_version: MLflow model version that produced the predictions.
         churn_probabilities: 1-D array of churn probabilities for every row in the batch.
     """
-    
+
     registry = CollectorRegistry()
 
     predictions_total = Counter(
         "predictions_total",
         "Total predictions in this batch.",
         ["model_version", "batch_filename"],
-        registry=registry
+        registry=registry,
     )
 
     churn_rate = Gauge(
         "predictions_churn_rate",
         "Share of positive (churn) predictions in this batch.",
         ["model_version", "batch_filename"],
-        registry=registry
+        registry=registry,
     )
 
     prediction_confidence_histogram = Histogram(
@@ -60,16 +59,22 @@ def push_prediction_metrics(
         "Distribution of churn probabilities in this batch.",
         ["model_version", "batch_filename"],
         buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
-        registry=registry
+        registry=registry,
     )
 
     batch_size = len(churn_probabilities)
     share_predicted_churn = (churn_probabilities > 0.5).mean()
 
-    predictions_total.labels(model_version=model_version, batch_filename=batch_filename).inc(batch_size)
-    churn_rate.labels(model_version=model_version, batch_filename=batch_filename).set(float(share_predicted_churn))
+    predictions_total.labels(
+        model_version=model_version, batch_filename=batch_filename
+    ).inc(batch_size)
+    churn_rate.labels(model_version=model_version, batch_filename=batch_filename).set(
+        float(share_predicted_churn)
+    )
 
-    labeled_confidence = prediction_confidence_histogram.labels(model_version=model_version, batch_filename=batch_filename)
+    labeled_confidence = prediction_confidence_histogram.labels(
+        model_version=model_version, batch_filename=batch_filename
+    )
     for p in churn_probabilities:
         labeled_confidence.observe(float(p))
 
@@ -77,12 +82,15 @@ def push_prediction_metrics(
         pushadd_to_gateway(PUSHGATEWAY_URL, job=JOB_NAME, registry=registry)
         logger.info(
             "Pushed prediction metrics: batch=%s model_version=%s n=%d",
-            batch_filename, model_version, batch_size,
+            batch_filename,
+            model_version,
+            batch_size,
         )
     except Exception as e:
         logger.warning(
             "Failed to push prediction metrics for batch=%s: %s",
-            batch_filename, e,
+            batch_filename,
+            e,
         )
 
 
@@ -114,62 +122,75 @@ def push_drift_metrics(
     )
 
     for feature, score in drift_per_feature.items():
-        drift_score.labels(feature_name=feature, batch_filename=batch_filename).set(float(score))
-
+        drift_score.labels(feature_name=feature, batch_filename=batch_filename).set(
+            float(score)
+        )
 
     try:
         pushadd_to_gateway(PUSHGATEWAY_URL, job=JOB_NAME, registry=registry)
-        logger.info("Pushed drift metrics: batch=%s n_features=%d", 
-                    batch_filename, len(drift_per_feature))
+        logger.info(
+            "Pushed drift metrics: batch=%s n_features=%d",
+            batch_filename,
+            len(drift_per_feature),
+        )
     except Exception as e:
         logger.warning(
             "Failed to push drift metrics for batch=%s: %s",
-            batch_filename, e,
+            batch_filename,
+            e,
         )
 
 
-def push_task_metrics(
+def push_dag_run_metrics(
     dag_id: str,
-    task_id: str,
+    run_id: str,
+    status: str,
     duration_seconds: float,
-    failed: bool,
 ) -> None:
-    """Push task duration and (optionally) failure count."""
-    ...
+    """Push end-of-DAG metrics: overall status and total duration.
+
+    Emits:
+        - dag_run_status: 1 per run, labelled by status ("success" or "failed").
+        - dag_run_duration_seconds: histogram of total DAG duration.
+
+    Each run is pushed under a unique grouping_key (dag_id + run_id) so
+    pushgateway retains every run as a distinct series, allowing
+    count() queries over time in Grafana.
+    """
 
     registry = CollectorRegistry()
 
-    duration_histogram = Histogram(
+    dag_run_status = Gauge(
+        "dag_run_status",
+        "End-of-DAG status.",
+        ["dag_id", "status"],
+        registry=registry,
+    )
+
+    dag_run_duration = Histogram(
         "dag_run_duration_seconds",
-        "Duration of an Airflow task in seconds.",
-        ["dag_id", "task_id"],
-        buckets=[1, 5, 10, 30, 60, 120, 300, 600],
+        "Total duration of a DAG run in seconds.",
+        ["dag_id"],
+        buckets=[10, 30, 60, 120, 300, 600, 1200],
         registry=registry,
     )
 
-    failures_total = Counter(
-        "dag_run_failures_total",
-        "Total task failures by task.",
-        ["dag_id", "task_id"],
-        registry=registry,
-    )
-    
-    duration_histogram.labels(dag_id=dag_id, task_id=task_id).observe(duration_seconds)
-
-    if failed:
-        failures_total.labels(dag_id=dag_id, task_id=task_id).inc()
+    dag_run_status.labels(dag_id=dag_id, status=status).set(1)
+    dag_run_duration.labels(dag_id=dag_id).observe(duration_seconds)
 
     try:
-        pushadd_to_gateway(PUSHGATEWAY_URL, 
-                           job=JOB_NAME, 
-                           grouping_key={"dag_id": dag_id, "task_id": task_id},
-                           registry=registry)
+        pushadd_to_gateway(
+            PUSHGATEWAY_URL,
+            job=JOB_NAME,
+            grouping_key={"dag_id": dag_id, "run_id": run_id},
+            registry=registry,
+        )
         logger.info(
-            "Pushed task metrics: dag=%s task=%s duration=%.2fs failed=%s",
-            dag_id, task_id, duration_seconds, failed,
+            "Pushed DAG run metrics: dag=%s run_id=%s status=%s duration=%.2fs",
+            dag_id, run_id, status, duration_seconds,
         )
     except Exception as e:
         logger.warning(
-            "Failed to push task metrics for dag=%s task=%s: %s",
-            dag_id, task_id, e,
+            "Failed to push DAG run metrics for dag=%s run_id=%s: %s",
+            dag_id, run_id, e,
         )

@@ -1,23 +1,23 @@
 """Weekly batch churn-prediction DAG.
 
-    Task chain: validate → detect_drift → run_predictions →
-    check_data_quality → archive_processed_data.
+Task chain: validate → detect_drift → run_predictions →
+check_data_quality → archive_processed_data.
 
-    Failure handling:
-    - All tasks retry once with a 30s delay.
-    - Hard data-quality failures stop the DAG before archive, so the
-    source file remains in incoming/ for re-processing after a fix.
-    - Soft data-quality warnings are logged but do not stop the pipeline.
-    - All persistence is idempotent on (batch_filename, model_version).
+Failure handling:
+- All tasks retry once with a 30s delay.
+- Hard data-quality failures stop the DAG before archive, so the
+source file remains in incoming/ for re-processing after a fix.
+- Soft data-quality warnings are logged but do not stop the pipeline.
+- All persistence is idempotent on (batch_filename, model_version).
 """
 
 import hashlib
+import json
 import logging
 import os
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import json
 
 import mlflow
 import pandas as pd
@@ -33,17 +33,16 @@ from sqlalchemy.engine import URL
 from churn_prediction import PROJECT_ROOT
 from churn_prediction.data.schema import get_column_lists
 from churn_prediction.features.preprocessor import preprocess_inference_data
+from churn_prediction.monitoring.data_quality import aggregate_results, run_all_checks
+from churn_prediction.monitoring.metrics import (
+    push_drift_metrics,
+    push_prediction_metrics,
+    push_dag_run_metrics,
+)
 from churn_prediction.registry.mlflow_client import (
     load_champion_model,
     load_champion_preprocessor,
 )
-from churn_prediction.monitoring.data_quality import run_all_checks, aggregate_results
-from churn_prediction.monitoring.metrics import ( 
-    push_prediction_metrics, 
-    push_drift_metrics, 
-    push_task_metrics 
-    )
-
 
 FEATURE_SCHEMA_PATH = PROJECT_ROOT / "config" / "feature_schema.yaml"
 INCOMING_DIR = PROJECT_ROOT / "data" / "incoming"
@@ -57,25 +56,27 @@ logger = logging.getLogger(__name__)
 
 def _on_success(context):
 
-    ti = context["task_instance"]
+    dag_run = context["dag_run"]
+    duration = (datetime.now(timezone.utc) - dag_run.start_date).total_seconds()
 
-    push_task_metrics(
-        dag_id=ti.dag_id,
-        task_id=ti.task_id,
-        duration_seconds=ti.duration or 0.0,
-        failed=False
+    push_dag_run_metrics(
+        dag_id=dag_run.dag_id,
+        run_id=dag_run.run_id,
+        status="success",
+        duration_seconds=duration,
     )
 
 
 def _on_failure(context):
 
-    ti = context["task_instance"]
+    dag_run = context["dag_run"]
+    duration = (datetime.now(timezone.utc) - dag_run.start_date).total_seconds()
 
-    push_task_metrics(
-        dag_id=ti.dag_id,
-        task_id=ti.task_id,
-        duration_seconds=ti.duration or 0.0,
-        failed=True
+    push_dag_run_metrics(
+        dag_id=dag_run.dag_id,
+        run_id=dag_run.run_id,
+        status="failed",
+        duration_seconds=duration,
     )
 
 
@@ -87,8 +88,6 @@ default_args = {
     "retry_delay": timedelta(seconds=30),
     # "retry_exponential_backoff": True,
     # "max_retry_delay": timedelta(minutes=10),
-    "on_success_callback": _on_success,
-    "on_failure_callback": _on_failure,
 }
 
 
@@ -112,8 +111,10 @@ with DAG(
     start_date=datetime(2026, 4, 13),
     catchup=False,
     tags=["ml", "batch", "predictions"],
+    on_success_callback=_on_success,
+    on_failure_callback=_on_failure,
 ) as dag:
-    
+
     @task
     def validate_incoming_data() -> str:
         """
@@ -223,9 +224,7 @@ with DAG(
                 share_drifted,
             )
         else:
-            logger.info(
-                "No dataset drift detected. Share drifted: %.3f", share_drifted
-            )
+            logger.info("No dataset drift detected. Share drifted: %.3f", share_drifted)
 
         batch_filename = Path(new_batch).name
         drift_row = pd.DataFrame(
@@ -254,7 +253,9 @@ with DAG(
             for feature, column_result in drift_table["drift_by_columns"].items()
         }
 
-        push_drift_metrics(batch_filename=batch_filename, drift_per_feature=drift_per_feature)
+        push_drift_metrics(
+            batch_filename=batch_filename, drift_per_feature=drift_per_feature
+        )
 
         return new_batch
 
@@ -301,9 +302,11 @@ with DAG(
         logger.info("Share predicted to churn: %.3f", y_pred.mean())
         logger.info("Model version: %s", model_version)
 
-        push_prediction_metrics(batch_filename=Path(new_batch).name, 
-                                model_version=str(model_version), 
-                                churn_probabilities=y_prob)
+        push_prediction_metrics(
+            batch_filename=Path(new_batch).name,
+            model_version=str(model_version),
+            churn_probabilities=y_prob,
+        )
 
         results = pd.DataFrame(
             {
@@ -313,7 +316,7 @@ with DAG(
                 "prediction_timestamp": datetime.now(),
                 "model_version": model_version,
                 "input_features_hash": input_features_hash,
-                "batch_filename": Path(new_batch).name
+                "batch_filename": Path(new_batch).name,
             }
         )
 
@@ -357,13 +360,15 @@ with DAG(
 
         new_batch = predictions_input["batch_path"]
         model_version = predictions_input["model_version"]
-        
+
         data = pd.read_csv(new_batch)
 
         engine = get_db_engine()
         predictions = pd.read_sql(
-            text("SELECT * FROM predictions "
-                "WHERE batch_filename = :b AND model_version = :v"),
+            text(
+                "SELECT * FROM predictions "
+                "WHERE batch_filename = :b AND model_version = :v"
+            ),
             con=engine,
             params={"b": Path(new_batch).name, "v": model_version},
         )
@@ -373,42 +378,50 @@ with DAG(
         logger.info("Quality check results: %s", check_results)
 
         aggregated_results = aggregate_results(check_results)
-        
-        report_row = pd.DataFrame([{
-            "batch_filename": Path(new_batch).name,
-            "model_version": str(model_version),
-            "check_timestamp": datetime.now(),
-            "all_passed": aggregated_results["all_passed"],
-            "total_checks": aggregated_results["total_checks"],
-            "passed_checks": aggregated_results["passed_checks"],
-            "failed_checks": aggregated_results["failed_checks"],
-            "warnings": aggregated_results["warnings"],
-            "check_details": json.dumps(check_results),
-        }])
+
+        report_row = pd.DataFrame(
+            [
+                {
+                    "batch_filename": Path(new_batch).name,
+                    "model_version": str(model_version),
+                    "check_timestamp": datetime.now(),
+                    "all_passed": aggregated_results["all_passed"],
+                    "total_checks": aggregated_results["total_checks"],
+                    "passed_checks": aggregated_results["passed_checks"],
+                    "failed_checks": aggregated_results["failed_checks"],
+                    "warnings": aggregated_results["warnings"],
+                    "check_details": json.dumps(check_results),
+                }
+            ]
+        )
 
         with engine.begin() as conn:
             conn.execute(
-                text("DELETE FROM data_quality_reports "
-                    "WHERE batch_filename = :b AND model_version = :v"),
+                text(
+                    "DELETE FROM data_quality_reports "
+                    "WHERE batch_filename = :b AND model_version = :v"
+                ),
                 {"b": Path(new_batch).name, "v": str(model_version)},
             )
             report_row.to_sql(
-                "data_quality_reports", con=conn,
-                if_exists="append", index=False
+                "data_quality_reports", con=conn, if_exists="append", index=False
             )
 
         if not aggregated_results["all_passed"]:
-            logger.error("Data quality hard failures: %s", aggregated_results["hard_failures"])
+            logger.error(
+                "Data quality hard failures: %s", aggregated_results["hard_failures"]
+            )
             raise ValueError(
                 f"Data quality checks failed for batch "
                 f"{Path(new_batch).name}: {aggregated_results['hard_failures']}"
             )
 
         if aggregated_results["warnings"] > 0:
-            logger.warning("Data quality warnings present: %d", aggregated_results["warnings"])
+            logger.warning(
+                "Data quality warnings present: %d", aggregated_results["warnings"]
+            )
 
         return new_batch
-
 
     @task
     def archive_processed_data(new_batch: str) -> None:

@@ -1,9 +1,9 @@
 """MLflow registry wrapper.
 
-    Loads the production model and preprocessor by the 'champion' alias.
-    Promoting a new version is done by reassigning the alias in the MLflow
-    UI or via the registry API. loaders never look up by version number,
-    so a rollback is one alias-pointer change.
+Loads the production model and preprocessor by the 'champion' alias.
+Promoting a new version is done by reassigning the alias in the MLflow
+UI or via the registry API. loaders never look up by version number,
+so a rollback is one alias-pointer change.
 """
 
 import logging
@@ -12,7 +12,6 @@ import os
 import mlflow
 import xgboost as xgb
 from sklearn.compose import ColumnTransformer
-
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +33,7 @@ def _load_champion(name: str, loader):
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
     if not tracking_uri:
         raise RuntimeError("MLFLOW_TRACKING_URI not set")
-    
+
     mlflow.set_tracking_uri(tracking_uri)
     client = mlflow.MlflowClient()
 

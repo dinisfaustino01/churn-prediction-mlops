@@ -1,10 +1,10 @@
 """End-to-end training pipeline.
 
-    Loads the raw Telco dataset, splits train/test, fits the preprocessor
-    and XGBoost model, evaluates on the test set, logs everything to
-    MLflow, and registers both artifacts under the 'champion' alias.
+Loads the raw Telco dataset, splits train/test, fits the preprocessor
+and XGBoost model, evaluates on the test set, logs everything to
+MLflow, and registers both artifacts under the 'champion' alias.
 
-    Run via: `make train`
+Run via: `make train`
 """
 
 import hashlib
@@ -79,14 +79,16 @@ def main() -> None:
     logger.info("Training Duration: %s", duration)
 
     evaluation = evaluate_model(model, X_test, y_test)
-    
-    numeric_metrics = {k: v for k, v in evaluation.items() if isinstance(v, (int, float))}
-    logger.info("Evaluation: %s", numeric_metrics) 
-    
+
+    numeric_metrics = {
+        k: v for k, v in evaluation.items() if isinstance(v, (int, float))
+    }
+    logger.info("Evaluation: %s", numeric_metrics)
+
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
     if not tracking_uri:
         raise RuntimeError("MLFLOW_TRACKING_URI not set in .env")
-    
+
     logger.info("Connecting to MLflow tracking server: %s", tracking_uri)
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment("churn-prediction-training")
@@ -95,7 +97,6 @@ def main() -> None:
     logger.info("Git SHA: %s", git_sha)
 
     with mlflow.start_run(run_name=f"train-{git_sha}"):
-
         mlflow.set_tag("git_commit_sha", git_sha)
         mlflow.set_tag("dataset_hash", dataset_hash)
 
@@ -113,14 +114,27 @@ def main() -> None:
         model_uri = f"runs:/{run_id}/model"
         preprocessor_uri = f"runs:/{run_id}/preprocessor"
         registered_model = mlflow.register_model(model_uri, "churn-prediction-model")
-        registered_preprocessor = mlflow.register_model(preprocessor_uri, "churn-prediction-preprocessor")
+        registered_preprocessor = mlflow.register_model(
+            preprocessor_uri, "churn-prediction-preprocessor"
+        )
 
         client = mlflow.MlflowClient()
-        client.set_registered_model_alias(name="churn-prediction-model", alias="champion", version=registered_model.version)
-        client.set_registered_model_alias(name="churn-prediction-preprocessor", alias="champion", version=registered_preprocessor.version)
+        client.set_registered_model_alias(
+            name="churn-prediction-model",
+            alias="champion",
+            version=registered_model.version,
+        )
+        client.set_registered_model_alias(
+            name="churn-prediction-preprocessor",
+            alias="champion",
+            version=registered_preprocessor.version,
+        )
 
         logger.info("Registered model v%s as champion", registered_model.version)
-        logger.info("Registered preprocessor v%s as champion", registered_preprocessor.version)
+        logger.info(
+            "Registered preprocessor v%s as champion", registered_preprocessor.version
+        )
+
 
 if __name__ == "__main__":
     main()
