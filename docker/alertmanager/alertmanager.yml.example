@@ -1,0 +1,13 @@
+route:
+  receiver: slack-alerts
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 1h
+
+receivers:
+  - name: slack-alerts
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/REPLACE/WITH/YOUR_OWN'
+        channel: '#alerts'
+        title: '{{ .CommonAnnotations.summary }}'
+        text: "{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}"

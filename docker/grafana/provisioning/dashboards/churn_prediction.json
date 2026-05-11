@@ -23,6 +23,146 @@
   "panels": [
     {
       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "continuous-GrYlRd"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "count(dag_run_status{dag_id=\"$dag_id\", status=\"success\"})",
+          "instant": false,
+          "interval": "",
+          "legendFormat": "Success",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "count(dag_run_status{dag_id=\"$dag_id\", status=\"failed\"})",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "Failed",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "DAG runs (success vs failed)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "postgres"
       },
@@ -178,6 +318,8 @@
             }
           },
           "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -190,7 +332,8 @@
                 "value": 0.1
               }
             ]
-          }
+          },
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -267,11 +410,10 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "continuous-GrYlRd"
+            "mode": "palette-classic"
           },
           "custom": {
             "axisBorderShow": false,
@@ -289,7 +431,7 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "stepAfter",
             "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
@@ -302,10 +444,11 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "off"
+              "mode": "dashed"
             }
           },
           "mappings": [],
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -315,51 +458,21 @@
               },
               {
                 "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Success"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
+                "value": 120
               }
             ]
           },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Failed"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
+          "unit": "s"
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 16
+        "x": 12,
+        "y": 8
       },
-      "id": 1,
+      "id": 4,
       "options": {
         "legend": {
           "calcs": [],
@@ -379,11 +492,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "exemplar": false,
-          "expr": "count(dag_run_status{dag_id=\"$dag_id\", status=\"success\"})",
+          "expr": "histogram_quantile(0.5, sum by (le) (dag_run_duration_seconds_bucket{dag_id=\"$dag_id\"}))",
           "instant": false,
-          "interval": "",
-          "legendFormat": "Success",
+          "legendFormat": "p50",
           "range": true,
           "refId": "A"
         },
@@ -393,15 +504,15 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "count(dag_run_status{dag_id=\"$dag_id\", status=\"failed\"})",
+          "expr": "histogram_quantile(0.95, sum by (le) (dag_run_duration_seconds_bucket{dag_id=\"$dag_id\"}))",
           "hide": false,
           "instant": false,
-          "legendFormat": "Failed",
+          "legendFormat": "p95",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "DAG runs (success vs failed)",
+      "title": "DAG run duration",
       "type": "timeseries"
     }
   ],
@@ -468,13 +579,13 @@
     ]
   },
   "time": {
-    "from": "now-3h",
+    "from": "now-15m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "Churn Prediction System",
   "uid": "churn-prediction",
-  "version": 5,
+  "version": 2,
   "weekStart": ""
 }

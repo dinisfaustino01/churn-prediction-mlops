@@ -155,7 +155,22 @@ services:
     container_name: alertmanager
     ports:
       - '9093:9093'
+    volumes:
       - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    environment:
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget -q --spider http://localhost:9093/-/healthy || exit 1',
+        ]
+      interval: 10s
+      retries: 5
+      start_period: 30s
 
   grafana:
     image: grafana/grafana:10.4.2

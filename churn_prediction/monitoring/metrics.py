@@ -95,6 +95,8 @@ def push_prediction_metrics(
 
 
 def push_drift_metrics(
+    dag_id: str,
+    run_id: str,
     batch_filename: str,
     drift_per_feature: dict[str, float],
 ) -> None:
@@ -127,7 +129,12 @@ def push_drift_metrics(
         )
 
     try:
-        pushadd_to_gateway(PUSHGATEWAY_URL, job=JOB_NAME, registry=registry)
+        pushadd_to_gateway(
+            PUSHGATEWAY_URL,
+            job=JOB_NAME,
+            grouping_key={"dag_id": dag_id, "run_id": run_id},
+            registry=registry,
+        )
         logger.info(
             "Pushed drift metrics: batch=%s n_features=%d",
             batch_filename,
@@ -187,10 +194,15 @@ def push_dag_run_metrics(
         )
         logger.info(
             "Pushed DAG run metrics: dag=%s run_id=%s status=%s duration=%.2fs",
-            dag_id, run_id, status, duration_seconds,
+            dag_id,
+            run_id,
+            status,
+            duration_seconds,
         )
     except Exception as e:
         logger.warning(
             "Failed to push DAG run metrics for dag=%s run_id=%s: %s",
-            dag_id, run_id, e,
+            dag_id,
+            run_id,
+            e,
         )

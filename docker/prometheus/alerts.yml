@@ -1,0 +1,30 @@
+groups:
+  - name: data_quality
+    rules:
+      - alert: DriftThresholdExceeded
+        expr: |
+          count by (batch_filename) (
+            drift_score > 0.1
+            and on(dag_id, run_id)
+            (time() - push_time_seconds{job="batch_prediction_dag"} < 300)
+          ) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Data drift detected'
+          description: '{{ $value }} features drifted in batch {{ $labels.batch_filename }}'
+
+  - name: infrastructure
+    rules:
+      - alert: DAGRunFailed
+        expr: |
+          (dag_run_status{status="failed"} == 1)
+          and on(dag_id, run_id)
+          (time() - push_time_seconds{job="batch_prediction_dag"} < 300)
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'DAG failed'
+          description: 'DAG {{ $labels.dag_id }} failed'

@@ -11,6 +11,7 @@ wheels/
 
 # Secrets
 .env
+docker/alertmanager/alertmanager.yml
 
 # Caches
 .pytest_cache/
@@ -46,9 +47,6 @@ desktop.ini
 # Editors
 .vscode/
 .idea/
-
-# Claude folder
-.claude/
 
 
 # Temporary ignores

@@ -35,9 +35,9 @@ from churn_prediction.data.schema import get_column_lists
 from churn_prediction.features.preprocessor import preprocess_inference_data
 from churn_prediction.monitoring.data_quality import aggregate_results, run_all_checks
 from churn_prediction.monitoring.metrics import (
+    push_dag_run_metrics,
     push_drift_metrics,
     push_prediction_metrics,
-    push_dag_run_metrics,
 )
 from churn_prediction.registry.mlflow_client import (
     load_champion_model,
@@ -155,7 +155,7 @@ with DAG(
         return new_batch
 
     @task
-    def detect_drift(new_batch: str) -> str:
+    def detect_drift(new_batch: str, **context) -> str:
         """
         Runs Evidently drift detection against the training reference snapshot.
 
@@ -253,8 +253,12 @@ with DAG(
             for feature, column_result in drift_table["drift_by_columns"].items()
         }
 
+        dag_run = context["dag_run"]
         push_drift_metrics(
-            batch_filename=batch_filename, drift_per_feature=drift_per_feature
+            dag_id=dag_run.dag_id,
+            run_id=dag_run.run_id,
+            batch_filename=batch_filename,
+            drift_per_feature=drift_per_feature,
         )
 
         return new_batch
