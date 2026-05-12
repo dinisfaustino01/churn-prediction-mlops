@@ -12,13 +12,12 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from xgboost.core import Booster
 
 logger = logging.getLogger(__name__)
 
 
 def evaluate_model(
-    model: Booster,
+    model,
     X_test: np.ndarray,
     y_test: np.ndarray,
 ) -> dict:

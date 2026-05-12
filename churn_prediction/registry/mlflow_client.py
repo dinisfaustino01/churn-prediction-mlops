@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def _load_champion(name: str, loader):
-    """Load the champion version of a registered MLflow model.
+    """Load the champion version of a registered MLflow model (or preprocessor).
 
     Args:
         name: Registered model name in MLflow.
