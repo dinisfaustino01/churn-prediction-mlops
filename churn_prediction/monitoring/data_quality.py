@@ -8,8 +8,12 @@ output and surfaces the list of hard failures driving the go/no-go
 decision.
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def _check_probability_range(predictions_df: pd.DataFrame) -> dict:
@@ -22,6 +26,12 @@ def _check_probability_range(predictions_df: pd.DataFrame) -> dict:
 
     status = "passed" if no_nans and no_infs and in_range else "failed"
 
+    if status == "failed":
+        logger.warning(
+            "probability_range check failed: nans=%d, infs=%d, out_of_range=%d",
+            prob.isna().sum(), np.isinf(prob).sum(), (~prob.between(0, 1)).sum()
+        )
+
     return {"status": status, "severity": "hard"}
 
 
@@ -32,6 +42,12 @@ def _check_label_validity(predictions_df: pd.DataFrame) -> dict:
     valid_values = label.isin([0, 1]).all()
 
     status = "passed" if no_nans and valid_values else "failed"
+
+    if status == "failed":
+        logger.warning(
+            "label_validity check failed: nans=%d, invalid_values=%d",
+            label.isna().sum(), (~label.isin([0, 1])).sum()
+        )
 
     return {"status": status, "severity": "hard"}
 
@@ -44,6 +60,12 @@ def _check_row_count_match(
     actual = len(predictions_df)
 
     status = "passed" if expected == actual else "failed"
+
+    if status == "failed":
+        logger.warning(
+            "row_count_match check failed: expected=%d, actual=%d",
+            expected, actual
+        )
 
     return {
         "status": status,
@@ -61,6 +83,12 @@ def _check_customer_id_uniqueness(predictions_df: pd.DataFrame) -> dict:
     no_duplicated = not customer_id.duplicated().any()
 
     status = "passed" if no_nans and no_duplicated else "failed"
+
+    if status == "failed":
+        logger.warning(
+            "customer_id_uniqueness check failed: nulls=%d, duplicates=%d",
+            customer_id.isna().sum(), customer_id.duplicated().sum()
+        )
 
     return {
         "status": status,
@@ -80,6 +108,12 @@ def _check_prediction_variance(
 
     status = "passed" if std > threshold else "failed"
 
+    if status == "failed":
+        logger.warning(
+            "prediction_variance check failed: std=%.4f below threshold=%.4f",
+            std, threshold
+        )
+
     return {
         "status": status,
         "severity": "hard",
@@ -97,6 +131,12 @@ def _check_churn_rate_band(
     rate = predictions_df["predicted_label"].mean()
 
     status = "passed" if lower <= rate <= upper else "warning"
+
+    if status == "warning":
+        logger.warning(
+            "churn_rate_band check warning: rate=%.4f outside band [%.2f, %.2f]",
+            rate, lower, upper
+        )
 
     return {
         "status": status,
@@ -157,6 +197,11 @@ def aggregate_results(check_results: dict) -> dict:
     ]
 
     all_passed = len(hard_failures) == 0
+
+    logger.info(
+        "Quality checks: %d passed, %d failed, %d warnings. Hard failures: %s",
+        passed, failed, warnings, hard_failures if hard_failures else "none"
+    )
 
     return {
         "total_checks": int(total),

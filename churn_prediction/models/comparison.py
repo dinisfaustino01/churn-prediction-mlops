@@ -61,7 +61,9 @@ def compare_and_register(
     try:
         model = load_champion_model()
         preprocessor = load_champion_preprocessor()
-    except Exception:
+    except Exception as e:
+        
+        logger.warning("Failed to load champion (assuming first run): %s", e)
 
         challenger_version = _register_with_alias(
             client, 

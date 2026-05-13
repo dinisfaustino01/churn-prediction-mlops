@@ -26,7 +26,6 @@ from churn_prediction.models.train import load_params, train_model
 from churn_prediction.models.evaluate import evaluate_model
 
 import pandas as pd
-import git
 from sklearn.model_selection import train_test_split
 import mlflow
 
@@ -43,6 +42,7 @@ def _compute_dataset_hash(df: pd.DataFrame) -> str:
 def _get_git_sha() -> str:
     """Return the short git SHA of the current HEAD."""
     try:
+        import git
         repo = git.Repo(search_parent_directories=True)
         return repo.head.object.hexsha[:8]
     except Exception:

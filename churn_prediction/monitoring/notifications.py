@@ -111,6 +111,10 @@ def notify_retraining_outcome(comparison_result: dict) -> None:
 
         payload = _no_champion_payload()
     
+    else:
+        logger.warning("Unknown decision %r, skipping notification.", decision)
+        return
+    
     try:
         response = requests.post(slack_webhook, json=payload, timeout=10)
         if response.status_code != 200:

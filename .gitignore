@@ -35,6 +35,8 @@ data/drift_reports/*
 !data/drift_reports/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+data/reference/*
+!data/reference/.gitkeep
 
 # Scratch notebooks
 test.ipynb
