@@ -40,11 +40,28 @@ def _compute_dataset_hash(df: pd.DataFrame) -> str:
 
 
 def _get_git_sha() -> str:
-    """Return the short git SHA of the current HEAD."""
+    """Return the short git SHA of the current HEAD.
+
+    Checks GIT_COMMIT_SHA env var first (set by CI at build time), then falls
+    back to reading .git/HEAD directly for local runs. Returns "unknown" if
+    neither is available.
+    """
+    
+    sha = os.getenv("GIT_COMMIT_SHA")
+    if sha and sha != "unknown":
+        return sha[:8]
     try:
-        import git
-        repo = git.Repo(search_parent_directories=True)
-        return repo.head.object.hexsha[:8]
+        from pathlib import Path
+        # Workaround for local development
+        for parent in Path(__file__).resolve().parents:
+            git_dir = parent / ".git"
+            if git_dir.exists():
+                head = (git_dir / "HEAD").read_text().strip()
+                if head.startswith("ref: "):
+                    ref_path = git_dir / head[5:]
+                    return ref_path.read_text().strip()[:8]
+                return head[:8] 
+        return "unknown"
     except Exception:
         return "unknown"
 

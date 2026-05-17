@@ -83,6 +83,7 @@ services:
       - ./churn_prediction:/opt/airflow/churn_prediction
       - ./data:/opt/airflow/data
       - ./config:/opt/airflow/config
+      - ./.git:/opt/airflow/.git:ro
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -103,6 +104,7 @@ services:
       - ./churn_prediction:/opt/airflow/churn_prediction
       - ./data:/opt/airflow/data
       - ./config:/opt/airflow/config
+      - ./.git:/opt/airflow/.git:ro
     depends_on:
       airflow-init:
         condition: service_completed_successfully
