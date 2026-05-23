@@ -166,6 +166,10 @@ with DAG(
         data = data.drop(columns=cols_to_drop, errors="ignore")
         data["SeniorCitizen"] = data["SeniorCitizen"].astype(str)
 
+
+
+
+
         try:
             reference = pd.read_csv(REFERENCE_PATH)
         except FileNotFoundError as e:
