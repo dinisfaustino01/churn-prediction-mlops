@@ -28,11 +28,11 @@ train:
 predict:
 	uv run python scripts/batch_predict.py
 
-test:
-	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/unit /opt/airflow/tests/integration -v
-
 test-unit:
 	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/unit -v
 
 test-integration:
-	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/integration/test_pipeline_e2e.py -v -s
+	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/integration/test_train_prediction_pipeline.py -v -s
+
+test-e2e:
+	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/e2e -m e2e -v -s

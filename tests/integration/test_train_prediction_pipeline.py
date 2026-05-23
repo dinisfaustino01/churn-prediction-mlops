@@ -1,30 +1,31 @@
 import math
 
-import pytest
 import numpy as np
 import pandas as pd
+import pytest
 
-from churn_prediction.models.training_pipeline import train_candidate
 from churn_prediction.models.predict import make_predictions
+from churn_prediction.models.training_pipeline import train_candidate
 
 
 @pytest.mark.integration
-def test_train_and_prediction_e2e(tmp_path, 
-        monkeypatch, 
-        valid_df,
-        valid_sample_path, 
-        feature_schema_path, 
-        model_params_path
+def test_train_and_prediction_pipeline(
+    tmp_path,
+    monkeypatch,
+    valid_df,
+    valid_sample_path,
+    feature_schema_path,
+    model_params_path,
 ):
 
     monkeypatch.setenv("MLFLOW_TRACKING_URI", f"file://{tmp_path}")
-    
+
     result = train_candidate(
         data_path=valid_sample_path,
         feature_schema_path=feature_schema_path,
         model_params_path=model_params_path,
         experiment_name="integration-test",
-        run_name="e2e"
+        run_name="e2e",
     )
 
     assert isinstance(result, dict)
@@ -45,9 +46,8 @@ def test_train_and_prediction_e2e(tmp_path,
     assert result["metrics"]
     assert all(math.isfinite(v) for v in result["metrics"].values())
 
-    test_df = result["X_test_df"]     
-    model = result["candidate_model"]       
-    preprocessor = result["candidate_preprocessor"]  
+    model = result["candidate_model"]
+    preprocessor = result["candidate_preprocessor"]
 
     result_df = make_predictions(
         df=valid_df,

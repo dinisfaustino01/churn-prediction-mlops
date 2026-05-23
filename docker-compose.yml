@@ -5,6 +5,7 @@ x-airflow-common: &x-airflow-common
   AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
   AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
   AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
+  AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
   MLFLOW_TRACKING_URI: http://mlflow:5000
   POSTGRES_HOST: db
   POSTGRES_PORT: 5432

@@ -26,6 +26,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
 from churn_prediction import PROJECT_ROOT
+from churn_prediction.data.loader import load_raw_data
 from churn_prediction.data.schema import get_column_lists
 from churn_prediction.models.predict import make_predictions
 from churn_prediction.monitoring.data_quality import aggregate_results, run_all_checks
@@ -134,15 +135,7 @@ with DAG(
         new_batch = str(files[0])
         logger.info("Selected batch: %s", Path(new_batch).name)
 
-        df = pd.read_csv(new_batch)
-        logger.info("Row count: %d", len(df))
-
-        numeric_cols, categorical_cols, _, _ = get_column_lists(FEATURE_SCHEMA_PATH)
-        expected_columns = numeric_cols + categorical_cols
-
-        missing = set(expected_columns) - set(df.columns)
-        if missing:
-            raise ValueError(f"Missing columns: {missing}")
+        load_raw_data(new_batch)
 
         return new_batch
 

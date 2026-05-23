@@ -53,7 +53,7 @@ class RawCustomerRecord(BaseModel):
     ]
     MonthlyCharges: float = Field(ge=0)
     TotalCharges: Optional[float] = Field(default=None, ge=0)
-    Churn: Optional[Literal["Yes", "No"]]
+    Churn: Optional[Literal["Yes", "No"]] = None
 
     @field_validator("TotalCharges", mode="before")
     @classmethod
