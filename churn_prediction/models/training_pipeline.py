@@ -13,21 +13,21 @@ Both callers receive the same result dict and decide independently
 whether and how to register the artifacts.
 """
 
-from pathlib import Path
-import logging
 import hashlib
-import time
+import logging
 import os
+import time
+from pathlib import Path
+
+import mlflow
+import pandas as pd
+from sklearn.model_selection import train_test_split
 
 from churn_prediction.data.loader import load_raw_data
 from churn_prediction.features.engineering import build_features
-from churn_prediction.features.preprocessor import prepare_raw_xy, build_preprocessor
-from churn_prediction.models.train import load_params, train_model
+from churn_prediction.features.preprocessor import build_preprocessor, prepare_raw_xy
 from churn_prediction.models.evaluate import evaluate_model
-
-import pandas as pd
-from sklearn.model_selection import train_test_split
-import mlflow
+from churn_prediction.models.train import load_params, train_model
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +46,13 @@ def _get_git_sha() -> str:
     back to reading .git/HEAD directly for local runs. Returns "unknown" if
     neither is available.
     """
-    
+
     sha = os.getenv("GIT_COMMIT_SHA")
     if sha and sha != "unknown":
         return sha[:8]
     try:
         from pathlib import Path
+
         # Workaround for local development
         for parent in Path(__file__).resolve().parents:
             git_dir = parent / ".git"
@@ -60,7 +61,7 @@ def _get_git_sha() -> str:
                 if head.startswith("ref: "):
                     ref_path = git_dir / head[5:]
                     return ref_path.read_text().strip()[:8]
-                return head[:8] 
+                return head[:8]
         return "unknown"
     except Exception:
         return "unknown"
@@ -78,7 +79,7 @@ def train_candidate(
 
     Loads raw data, engineers features, splits train/test, fits the preprocessor,
     trains an XGBoost model, evaluates it, and logs everything (params, metrics,
-    artifacts) to the specified MLflow experiment. 
+    artifacts) to the specified MLflow experiment.
 
     Args:
         data_path: Path to the raw CSV training data.

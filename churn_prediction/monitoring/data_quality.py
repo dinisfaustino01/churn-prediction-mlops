@@ -29,7 +29,9 @@ def _check_probability_range(predictions_df: pd.DataFrame) -> dict:
     if status == "failed":
         logger.warning(
             "probability_range check failed: nans=%d, infs=%d, out_of_range=%d",
-            prob.isna().sum(), np.isinf(prob).sum(), (~prob.between(0, 1)).sum()
+            prob.isna().sum(),
+            np.isinf(prob).sum(),
+            (~prob.between(0, 1)).sum(),
         )
 
     return {"status": status, "severity": "hard"}
@@ -46,7 +48,8 @@ def _check_label_validity(predictions_df: pd.DataFrame) -> dict:
     if status == "failed":
         logger.warning(
             "label_validity check failed: nans=%d, invalid_values=%d",
-            label.isna().sum(), (~label.isin([0, 1])).sum()
+            label.isna().sum(),
+            (~label.isin([0, 1])).sum(),
         )
 
     return {"status": status, "severity": "hard"}
@@ -63,8 +66,7 @@ def _check_row_count_match(
 
     if status == "failed":
         logger.warning(
-            "row_count_match check failed: expected=%d, actual=%d",
-            expected, actual
+            "row_count_match check failed: expected=%d, actual=%d", expected, actual
         )
 
     return {
@@ -87,7 +89,8 @@ def _check_customer_id_uniqueness(predictions_df: pd.DataFrame) -> dict:
     if status == "failed":
         logger.warning(
             "customer_id_uniqueness check failed: nulls=%d, duplicates=%d",
-            customer_id.isna().sum(), customer_id.duplicated().sum()
+            customer_id.isna().sum(),
+            customer_id.duplicated().sum(),
         )
 
     return {
@@ -111,7 +114,8 @@ def _check_prediction_variance(
     if status == "failed":
         logger.warning(
             "prediction_variance check failed: std=%.4f below threshold=%.4f",
-            std, threshold
+            std,
+            threshold,
         )
 
     return {
@@ -135,7 +139,9 @@ def _check_churn_rate_band(
     if status == "warning":
         logger.warning(
             "churn_rate_band check warning: rate=%.4f outside band [%.2f, %.2f]",
-            rate, lower, upper
+            rate,
+            lower,
+            upper,
         )
 
     return {
@@ -200,7 +206,10 @@ def aggregate_results(check_results: dict) -> dict:
 
     logger.info(
         "Quality checks: %d passed, %d failed, %d warnings. Hard failures: %s",
-        passed, failed, warnings, hard_failures if hard_failures else "none"
+        passed,
+        failed,
+        warnings,
+        hard_failures if hard_failures else "none",
     )
 
     return {

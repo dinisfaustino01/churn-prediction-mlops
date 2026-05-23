@@ -124,3 +124,4 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers= ["integration: slow end-to-end tests"]

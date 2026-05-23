@@ -19,9 +19,6 @@ format:
 	uv run ruff check --fix .
 	uv run ruff format .
 
-test:
-	uv run pytest -v
-
 install:
 	uv sync
 
@@ -30,3 +27,12 @@ train:
 
 predict:
 	uv run python scripts/batch_predict.py
+
+test:
+	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/unit /opt/airflow/tests/integration -v
+
+test-unit:
+	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/unit -v
+
+test-integration:
+	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/integration/test_pipeline_e2e.py -v -s

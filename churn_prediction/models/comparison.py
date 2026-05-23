@@ -11,14 +11,17 @@ If no champion exists yet (first automated retraining run), the
 candidate is registered directly as 'champion'.
 """
 
-import os
 import logging
+import os
 
-from churn_prediction.registry.mlflow_client import load_champion_model, load_champion_preprocessor
-
+import mlflow
 import xgboost as xgb
 from sklearn.metrics import roc_auc_score
-import mlflow
+
+from churn_prediction.registry.mlflow_client import (
+    load_champion_model,
+    load_champion_preprocessor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +31,15 @@ PROMOTION_MARGIN = 0.01
 
 def _register_with_alias(client, model_uri, preprocessor_uri, alias):
     registered_model = mlflow.register_model(model_uri, "churn-prediction-model")
-    registered_preprocessor = mlflow.register_model(preprocessor_uri, "churn-prediction-preprocessor")
-    client.set_registered_model_alias("churn-prediction-model", alias, registered_model.version)
-    client.set_registered_model_alias("churn-prediction-preprocessor", alias, registered_preprocessor.version)
+    registered_preprocessor = mlflow.register_model(
+        preprocessor_uri, "churn-prediction-preprocessor"
+    )
+    client.set_registered_model_alias(
+        "churn-prediction-model", alias, registered_model.version
+    )
+    client.set_registered_model_alias(
+        "churn-prediction-preprocessor", alias, registered_preprocessor.version
+    )
     return registered_model.version
 
 
@@ -62,19 +71,18 @@ def compare_and_register(
         model = load_champion_model()
         preprocessor = load_champion_preprocessor()
     except Exception as e:
-        
         logger.warning("Failed to load champion (assuming first run): %s", e)
 
         challenger_version = _register_with_alias(
-            client, 
-            candidate_model_uri, 
-            candidate_preprocessor_uri, 
-            "champion"
-            )
+            client, candidate_model_uri, candidate_preprocessor_uri, "champion"
+        )
 
         decision = "no_champion"
 
-        logger.warning("No champion found. Registering candidate directly as champion (v%s).", challenger_version)
+        logger.warning(
+            "No champion found. Registering candidate directly as champion (v%s).",
+            challenger_version,
+        )
 
         return {
             "decision": decision,
@@ -82,11 +90,11 @@ def compare_and_register(
             "champion_auc": None,
             "delta": None,
             "margin_required": PROMOTION_MARGIN,
-            "challenger_version": challenger_version
-            }
+            "challenger_version": challenger_version,
+        }
 
-    X_test_champion = preprocessor.transform(X_test_df)      
-    X_test_candidate = candidate_preprocessor.transform(X_test_df) 
+    X_test_champion = preprocessor.transform(X_test_df)
+    X_test_candidate = candidate_preprocessor.transform(X_test_df)
 
     test_prediction_matrix_champion = xgb.DMatrix(X_test_champion)
     test_prediction_matrix_candidate = xgb.DMatrix(X_test_candidate)
@@ -100,34 +108,41 @@ def compare_and_register(
 
     delta = candidate_auc - champion_auc
 
-    logger.info("Champion AUC: %.4f | Candidate AUC: %.4f | Delta: %.4f", champion_auc, candidate_auc, delta)
+    logger.info(
+        "Champion AUC: %.4f | Candidate AUC: %.4f | Delta: %.4f",
+        champion_auc,
+        candidate_auc,
+        delta,
+    )
 
     if candidate_auc >= champion_auc + PROMOTION_MARGIN:
-
         challenger_version = _register_with_alias(
-            client, 
-            candidate_model_uri, 
-            candidate_preprocessor_uri, 
-            "challenger"
-            )
+            client, candidate_model_uri, candidate_preprocessor_uri, "challenger"
+        )
 
         decision = "registered_as_challenger"
 
-        logger.info("Candidate beats champion by %.4f. Registering as challenger v%s.", delta, challenger_version)
+        logger.info(
+            "Candidate beats champion by %.4f. Registering as challenger v%s.",
+            delta,
+            challenger_version,
+        )
 
     else:
         decision = "rejected"
         challenger_version = None
 
-        logger.info("Candidate rejected. Delta %.4f below required margin %.4f.", delta, PROMOTION_MARGIN)
-
-
+        logger.info(
+            "Candidate rejected. Delta %.4f below required margin %.4f.",
+            delta,
+            PROMOTION_MARGIN,
+        )
 
     return {
-            "decision": decision,
-            "candidate_auc": candidate_auc,
-            "champion_auc": champion_auc,
-            "delta": delta,
-            "margin_required": PROMOTION_MARGIN,
-            "challenger_version": challenger_version
-            }
+        "decision": decision,
+        "candidate_auc": candidate_auc,
+        "champion_auc": champion_auc,
+        "delta": delta,
+        "margin_required": PROMOTION_MARGIN,
+        "challenger_version": challenger_version,
+    }

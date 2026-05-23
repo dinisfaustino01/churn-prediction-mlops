@@ -10,8 +10,8 @@ Slack failures never raise, they are logged and swallowed so a
 Slack outage cannot fail the retraining pipeline.
 """
 
-import os
 import logging
+import os
 
 import requests
 
@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 def _registered_as_challenger_payload(
-        challenger_version: str, 
-        candidate_auc: float, 
-        champion_auc: float, 
-        delta: float,
-        margin_required: float) -> dict:
-    
+    challenger_version: str,
+    candidate_auc: float,
+    champion_auc: float,
+    delta: float,
+    margin_required: float,
+) -> dict:
+
     message = (
         f"New challenger registered (v{challenger_version})\n"
         f"Candidate AUC: {candidate_auc:.4f}\n"
@@ -36,11 +37,9 @@ def _registered_as_challenger_payload(
 
 
 def _rejected_payload(
-        candidate_auc: float, 
-        champion_auc: float, 
-        delta: float,
-        margin_required: float) -> dict:
-    
+    candidate_auc: float, champion_auc: float, delta: float, margin_required: float
+) -> dict:
+
     message = (
         f"Candidate rejected\n"
         f"Candidate AUC: {candidate_auc:.4f}\n"
@@ -52,11 +51,8 @@ def _rejected_payload(
 
 
 def _no_champion_payload() -> dict:
-    
-    message = (
-        "First champion registered\n"
-        "Candidate AUC: N/A (no baseline to compare)"
-    )
+
+    message = "First champion registered\nCandidate AUC: N/A (no baseline to compare)"
 
     return {"text": message}
 
@@ -89,32 +85,29 @@ def notify_retraining_outcome(comparison_result: dict) -> None:
     margin_required = comparison_result["margin_required"]
 
     if decision == "registered_as_challenger":
-
         payload = _registered_as_challenger_payload(
             challenger_version=challenger_version,
             candidate_auc=candidate_auc,
             champion_auc=champion_auc,
             delta=delta,
-            margin_required=margin_required
+            margin_required=margin_required,
         )
 
     elif decision == "rejected":
-
         payload = _rejected_payload(
             candidate_auc=candidate_auc,
             champion_auc=champion_auc,
             delta=delta,
-            margin_required=margin_required
+            margin_required=margin_required,
         )
-    
-    elif decision == "no_champion":
 
+    elif decision == "no_champion":
         payload = _no_champion_payload()
-    
+
     else:
         logger.warning("Unknown decision %r, skipping notification.", decision)
         return
-    
+
     try:
         response = requests.post(slack_webhook, json=payload, timeout=10)
         if response.status_code != 200:
@@ -123,5 +116,3 @@ def notify_retraining_outcome(comparison_result: dict) -> None:
     except requests.exceptions.RequestException as e:
         logger.warning("Failed to send Slack notification: %s", e)
         return
-    
-

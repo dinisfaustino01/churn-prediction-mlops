@@ -83,6 +83,7 @@ services:
       - ./churn_prediction:/opt/airflow/churn_prediction
       - ./data:/opt/airflow/data
       - ./config:/opt/airflow/config
+      - ./tests:/opt/airflow/tests
       - ./.git:/opt/airflow/.git:ro
     depends_on:
       airflow-init:
@@ -104,6 +105,7 @@ services:
       - ./churn_prediction:/opt/airflow/churn_prediction
       - ./data:/opt/airflow/data
       - ./config:/opt/airflow/config
+      - ./tests:/opt/airflow/tests
       - ./.git:/opt/airflow/.git:ro
     depends_on:
       airflow-init:

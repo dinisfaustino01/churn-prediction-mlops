@@ -11,7 +11,6 @@ source file remains in incoming/ for re-processing after a fix.
 - All persistence is idempotent on (batch_filename, model_version).
 """
 
-import hashlib
 import json
 import logging
 import os
@@ -21,37 +20,30 @@ from pathlib import Path
 
 import mlflow
 import pandas as pd
-import xgboost as xgb
 from airflow import DAG
 from airflow.decorators import task
-from evidently import ColumnMapping
-from evidently.metric_preset import DataDriftPreset
-from evidently.report import Report
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
 from churn_prediction import PROJECT_ROOT
 from churn_prediction.data.schema import get_column_lists
-from churn_prediction.features.preprocessor import preprocess_inference_data
+from churn_prediction.models.predict import make_predictions
 from churn_prediction.monitoring.data_quality import aggregate_results, run_all_checks
-from churn_prediction.monitoring.metrics import (
-    push_dag_run_metrics,
-    push_drift_metrics,
-    push_prediction_metrics,
-)
+from churn_prediction.monitoring.drift import check_drift
+from churn_prediction.monitoring.metrics import push_dag_run_metrics, push_drift_metrics
 from churn_prediction.registry.mlflow_client import (
     load_champion_model,
     load_champion_preprocessor,
 )
+
+logger = logging.getLogger(__name__)
+
 
 FEATURE_SCHEMA_PATH = PROJECT_ROOT / "config" / "feature_schema.yaml"
 INCOMING_DIR = PROJECT_ROOT / "data" / "incoming"
 REFERENCE_PATH = PROJECT_ROOT / "data" / "reference" / "training_snapshot.csv"
 DRIFT_REPORTS_DIR = PROJECT_ROOT / "data" / "drift_reports"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
-
-
-logger = logging.getLogger(__name__)
 
 
 def _on_success(context):
@@ -175,9 +167,7 @@ with DAG(
             FileNotFoundError: If the reference snapshot is missing.
         """
 
-        numeric_cols, categorical_cols, cols_to_drop, _ = get_column_lists(
-            FEATURE_SCHEMA_PATH
-        )
+        _, _, cols_to_drop, _ = get_column_lists(FEATURE_SCHEMA_PATH)
 
         data = pd.read_csv(new_batch)
         data = data.drop(columns=cols_to_drop, errors="ignore")
@@ -193,16 +183,16 @@ with DAG(
 
         reference["SeniorCitizen"] = reference["SeniorCitizen"].astype(str)
 
-        column_mapping = ColumnMapping()
-        column_mapping.numerical_features = numeric_cols
-        column_mapping.categorical_features = categorical_cols
-        column_mapping.target = None
-        column_mapping.prediction = None
-
-        report = Report(metrics=[DataDriftPreset()])
-        report.run(
-            reference_data=reference, current_data=data, column_mapping=column_mapping
+        drift_check_results = check_drift(
+            reference_df=reference,
+            current_df=data,
+            feature_schema_path=FEATURE_SCHEMA_PATH,
         )
+        report = drift_check_results["report"]
+        dataset_drift = drift_check_results["dataset_drift"]
+        num_drifted_features = drift_check_results["num_drifted_features"]
+        share_drifted_features = drift_check_results["share_drifted_features"]
+        drift_table = drift_check_results["drift_table"]
 
         batch_stem = Path(new_batch).stem
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -210,30 +200,14 @@ with DAG(
         html_path = f"{DRIFT_REPORTS_DIR}/drift_report_{batch_stem}_{timestamp}.html"
         report.save_html(html_path)
 
-        result = report.as_dict()["metrics"][0]["result"]
-        drift_table = report.as_dict()["metrics"][1]["result"]
-
-        dataset_drift = result["dataset_drift"]
-        num_drifted = result["number_of_drifted_columns"]
-        share_drifted = result["share_of_drifted_columns"]
-
-        if dataset_drift:
-            logger.warning(
-                "Drift detected: %d features drifted (share=%.3f)",
-                num_drifted,
-                share_drifted,
-            )
-        else:
-            logger.info("No dataset drift detected. Share drifted: %.3f", share_drifted)
-
         batch_filename = Path(new_batch).name
         drift_row = pd.DataFrame(
             [
                 {
                     "batch_filename": batch_filename,
                     "dataset_drift_detected": dataset_drift,
-                    "num_drifted_features": num_drifted,
-                    "share_drifted_features": share_drifted,
+                    "num_drifted_features": num_drifted_features,
+                    "share_drifted_features": share_drifted_features,
                     "report_path": html_path,
                     "report_timestamp": datetime.now(),
                 }
@@ -264,7 +238,7 @@ with DAG(
         return new_batch
 
     @task
-    def run_predictions(new_batch: str) -> str:
+    def run_predictions(new_batch: str) -> dict:
         """
         Loads the champion model and generates churn predictions for the batch.
 
@@ -273,58 +247,31 @@ with DAG(
         (idempotent on batch_filename + model_version).
 
         Args:
-            batch_and_drift: Dict with keys "batch_path" and "drift_result",
-                as returned by detect_drift.
+            new_batch: Absolute path to the incoming batch CSV.
 
         Returns:
             Absolute path to the batch CSV, passed through to the next task.
         """
 
         data = pd.read_csv(new_batch)
-
-        input_features_hash = hashlib.sha256(
-            pd.util.hash_pandas_object(data, index=True).values
-        ).hexdigest()[:16]
+        batch_filename = Path(new_batch).name
 
         model = load_champion_model()
         preprocessor = load_champion_preprocessor()
-
-        data_transformed = preprocess_inference_data(
-            data, FEATURE_SCHEMA_PATH, preprocessor
-        )
 
         client = mlflow.MlflowClient()
         model_version = client.get_model_version_by_alias(
             "churn-prediction-model", "champion"
         ).version
 
-        prediction_matrix = xgb.DMatrix(data_transformed)
-        y_prob = model.predict(prediction_matrix)
-        y_pred = (y_prob > 0.5).astype(int)
-
-        logger.info("Predictions generated: %d", len(y_pred))
-        logger.info("Share predicted to churn: %.3f", y_pred.mean())
-        logger.info("Model version: %s", model_version)
-
-        push_prediction_metrics(
-            batch_filename=Path(new_batch).name,
-            model_version=str(model_version),
-            churn_probabilities=y_prob,
+        results = make_predictions(
+            df=data,
+            model=model,
+            preprocessor=preprocessor,
+            feature_schema_path=FEATURE_SCHEMA_PATH,
+            batch_filename=batch_filename,
+            model_version=model_version,
         )
-
-        results = pd.DataFrame(
-            {
-                "customer_id": data["customerID"],
-                "churn_probability": y_prob,
-                "predicted_label": y_pred,
-                "prediction_timestamp": datetime.now(),
-                "model_version": model_version,
-                "input_features_hash": input_features_hash,
-                "batch_filename": Path(new_batch).name,
-            }
-        )
-
-        batch_filename = Path(new_batch).name
 
         engine = get_db_engine()
         with engine.begin() as conn:
@@ -353,7 +300,8 @@ with DAG(
         halt the pipeline.
 
         Args:
-            new_batch: Absolute path to the incoming batch CSV.
+            predictions_input: Dict with keys "batch_path" and "model_version",
+            as returned by run_predictions.
 
         Returns:
             The same path, passed through to archive_processed_data.

@@ -13,13 +13,12 @@ Run via: `make train`
 
 import os
 
+import mlflow
 from dotenv import load_dotenv
-from churn_prediction.utils.logging_setup import setup_logging
+
 from churn_prediction import PROJECT_ROOT
 from churn_prediction.models.training_pipeline import train_candidate
-
-import mlflow
-
+from churn_prediction.utils.logging_setup import setup_logging
 
 DATA_PATH = PROJECT_ROOT / "data" / "training" / "train_data.csv"
 FEATURE_SCHEMA_PATH = PROJECT_ROOT / "config" / "feature_schema.yaml"
@@ -49,8 +48,12 @@ def main() -> None:
 
     client = mlflow.MlflowClient()
 
-    registered_model = mlflow.register_model(result["model_uri"], "churn-prediction-model")
-    registered_preprocessor = mlflow.register_model(result["preprocessor_uri"], "churn-prediction-preprocessor")
+    registered_model = mlflow.register_model(
+        result["model_uri"], "churn-prediction-model"
+    )
+    registered_preprocessor = mlflow.register_model(
+        result["preprocessor_uri"], "churn-prediction-preprocessor"
+    )
 
     client.set_registered_model_alias(
         name="churn-prediction-model",

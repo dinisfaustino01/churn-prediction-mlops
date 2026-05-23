@@ -1,6 +1,12 @@
+"""Unit tests for the preprocessor.
+
+Verifies that the ColumnTransformer pipeline handles edge cases:
+missing values, unseen categorical levels, and output determinism.
+"""
+
 import numpy as np
 
-from churn_prediction.features.preprocessor import prepare_raw_xy, build_preprocessor
+from churn_prediction.features.preprocessor import build_preprocessor, prepare_raw_xy
 
 
 def test_handles_missing_values(valid_df, feature_schema_path):
@@ -33,7 +39,7 @@ def test_handles_unseen_categoricals(valid_df, feature_schema_path):
 
 
 def test_output_shape_is_deterministic(valid_df, feature_schema_path):
-    
+
     X_df, _ = prepare_raw_xy(valid_df, feature_schema_path)
 
     result_1 = build_preprocessor(feature_schema_path).fit_transform(X_df)

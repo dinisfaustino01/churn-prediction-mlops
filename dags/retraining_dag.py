@@ -28,21 +28,21 @@ Failure handling:
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
 import os
+from datetime import datetime, timedelta, timezone
 
+import mlflow
 from airflow import DAG
 from airflow.decorators import task
-import mlflow
 from sklearn.model_selection import train_test_split
 
 from churn_prediction import PROJECT_ROOT
-from churn_prediction.monitoring.metrics import push_dag_run_metrics
-from churn_prediction.models.training_pipeline import train_candidate
 from churn_prediction.data.loader import load_raw_data
 from churn_prediction.features.engineering import build_features
 from churn_prediction.features.preprocessor import prepare_raw_xy
 from churn_prediction.models.comparison import compare_and_register
+from churn_prediction.models.training_pipeline import train_candidate
+from churn_prediction.monitoring.metrics import push_dag_run_metrics
 from churn_prediction.monitoring.notifications import notify_retraining_outcome
 
 logger = logging.getLogger(__name__)
@@ -113,15 +113,15 @@ with DAG(
             model_params_path=MODEL_PARAMS_PATH,
             experiment_name="churn-prediction-retraining",
             run_name="train",
-            extra_tags={"triggered_by": "retraining_dag"}
+            extra_tags={"triggered_by": "retraining_dag"},
         )
 
         mlflow_run_id = train_result["run_id"]
         logger.info("Training complete. MLflow run_id: %s", mlflow_run_id)
 
         return mlflow_run_id
-    
-    @task  
+
+    @task
     def compare_and_register_task(mlflow_run_id: str) -> dict:
 
         mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
@@ -130,9 +130,13 @@ with DAG(
 
         try:
             candidate_model = mlflow.xgboost.load_model(f"runs:/{mlflow_run_id}/model")
-            candidate_preprocessor = mlflow.sklearn.load_model(f"runs:/{mlflow_run_id}/preprocessor")
+            candidate_preprocessor = mlflow.sklearn.load_model(
+                f"runs:/{mlflow_run_id}/preprocessor"
+            )
         except Exception as e:
-            logger.error("Failed to load candidate artifacts from run %s: %s", mlflow_run_id, e)
+            logger.error(
+                "Failed to load candidate artifacts from run %s: %s", mlflow_run_id, e
+            )
             raise
 
         df = load_raw_data(DATA_PATH)
@@ -140,7 +144,7 @@ with DAG(
         X_df, y = prepare_raw_xy(fe_df, FEATURE_SCHEMA_PATH)
         _, X_test_df, _, y_test = train_test_split(
             X_df, y, test_size=0.2, random_state=42, stratify=y
-        )   
+        )
         logger.info("Test set derived: %d rows.", len(X_test_df))
 
         comparison_result = compare_and_register(
@@ -154,15 +158,16 @@ with DAG(
         logger.info("Comparison complete. Decision: %s", comparison_result["decision"])
 
         return comparison_result
-    
+
     @task
     def notify_retraining_outcome_task(comparison_result: dict) -> None:
 
-        logger.info("Sending Slack notification for decision: %s", comparison_result["decision"])
+        logger.info(
+            "Sending Slack notification for decision: %s", comparison_result["decision"]
+        )
         notify_retraining_outcome(comparison_result)
 
-        return 
-    
+        return
 
     mlflow_run_id = train_candidate_task()
     comparison_result = compare_and_register_task(mlflow_run_id)

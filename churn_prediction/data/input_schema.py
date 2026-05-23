@@ -5,9 +5,17 @@ Used by both the training and prediction pipelines to enforce data quality at
 the ingestion boundary.
 """
 
-import pandas as pd
 from typing import Literal, Optional
-from pydantic import BaseModel, Field, ConfigDict, TypeAdapter, ValidationError, field_validator
+
+import pandas as pd
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+)
 
 
 class RawCustomerRecord(BaseModel):
@@ -36,8 +44,13 @@ class RawCustomerRecord(BaseModel):
     StreamingTV: Literal["Yes", "No", "No internet service"]
     StreamingMovies: Literal["Yes", "No", "No internet service"]
     Contract: Literal["Month-to-month", "One year", "Two year"]
-    PaperlessBilling: Literal["Yes", "No"]	
-    PaymentMethod: Literal["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"]
+    PaperlessBilling: Literal["Yes", "No"]
+    PaymentMethod: Literal[
+        "Electronic check",
+        "Mailed check",
+        "Bank transfer (automatic)",
+        "Credit card (automatic)",
+    ]
     MonthlyCharges: float = Field(ge=0)
     TotalCharges: Optional[float] = Field(default=None, ge=0)
     Churn: Optional[Literal["Yes", "No"]]
@@ -63,12 +76,12 @@ def validate_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         ValueError: If any row violates the schema, with a description of the
             first failing field and value.
     """
-    
+
     records = df.to_dict(orient="records")
 
     try:
         TypeAdapter(list[RawCustomerRecord]).validate_python(records)
     except ValidationError as e:
         raise ValueError(f"Data contract violation:\n{e}") from e
-    
+
     return df
