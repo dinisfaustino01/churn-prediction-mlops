@@ -4,7 +4,10 @@ Verifies that both DAGs load without import errors, contain the expected
 task IDs, and wire the correct upstream dependencies.
 """
 
+import pytest
 
+
+@pytest.mark.integration
 def test_batch_prediction_dag_structure(dag_bag):
 
     batch_prediction_dag = dag_bag.get_dag("batch_prediction_pipeline")
@@ -33,6 +36,7 @@ def test_batch_prediction_dag_structure(dag_bag):
     assert archive_processed_data.upstream_task_ids == {"check_data_quality"}
 
 
+@pytest.mark.integration
 def test_retraining_dag_structure(dag_bag):
 
     retraining_dag = dag_bag.get_dag("retraining_pipeline")

@@ -32,7 +32,7 @@ test-unit:
 	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/unit -v
 
 test-integration:
-	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/integration/test_train_prediction_pipeline.py -v -s
+	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/integration -m integration -v -s
 
 test-e2e:
 	docker compose exec airflow-scheduler python -m pytest /opt/airflow/tests/e2e -m e2e -v -s
