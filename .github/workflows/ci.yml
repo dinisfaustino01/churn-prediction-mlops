@@ -10,5 +10,89 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Hello world
-        run: echo "CI is alive"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run unit tests
+        run: uv run pytest tests/unit -v
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create CI .env
+        run: |
+          echo "POSTGRES_USER=ci" >> .env
+          echo "POSTGRES_PASSWORD=ci" >> .env
+          echo "POSTGRES_DB=ci" >> .env
+          echo "AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=" >> .env
+          echo "AIRFLOW__WEBSERVER__SECRET_KEY=ci-secret" >> .env
+          echo "AIRFLOW_ADMIN_USER=admin" >> .env
+          echo "AIRFLOW_ADMIN_PASSWORD=admin" >> .env
+          echo "SLACK_RETRAINING_WEBHOOK_URL=http://localhost" >> .env
+          echo "SLACK_WEBHOOK_URL=http://localhost" >> .env
+
+      - name: Build Airflow image
+        run: docker compose build airflow-scheduler
+
+      - name: Run integrations tests
+        run: docker compose run --rm --no-deps --entrypoint "" airflow-scheduler pytest tests/integration -m integration -v
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Airflow image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/airflow/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build MLflow image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/mlflow/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
