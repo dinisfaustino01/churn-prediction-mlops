@@ -67,4 +67,4 @@ jobs:
         run: docker compose build airflow-scheduler
 
       - name: Run integrations tests
-        run: docker compose run --rm --no-deps airflow-scheduler pytest tests/integration -m integration -v
+        run: docker compose run --rm --no-deps --entrypoint "" airflow-scheduler pytest tests/integration -m integration -v
