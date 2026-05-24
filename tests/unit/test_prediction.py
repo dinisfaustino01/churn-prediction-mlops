@@ -34,8 +34,7 @@ def test_prediction_output_format(
     }
 
     assert isinstance(result_df, pd.DataFrame)
-    # assert len(result_df) == len(valid_df)
-    assert len(result_df) == 0
+    assert len(result_df) == len(valid_df)
     assert set(result_df.columns) == expected_columns
     assert result_df["churn_probability"].dtype == np.float32
     assert result_df["predicted_label"].dtype == np.int64

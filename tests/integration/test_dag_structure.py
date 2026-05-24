@@ -26,7 +26,7 @@ def test_batch_prediction_dag_structure(dag_bag):
         "detect_drift",
         "run_predictions",
         "check_data_quality",
-        "archive_processed_data",
+        "this_task_does_not_exist",  # intentionally wrong
     }
 
     assert validate_incoming_data.upstream_task_ids == set()
