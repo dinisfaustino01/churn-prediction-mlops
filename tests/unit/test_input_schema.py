@@ -6,8 +6,6 @@ extra columns are forbidden, and the custom empty-string validator
 for TotalCharges works.
 """
 
-import os
-
 import pytest
 
 from churn_prediction.data.input_schema import RawCustomerRecord, validate_dataframe
